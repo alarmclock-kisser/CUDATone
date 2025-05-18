@@ -9,6 +9,7 @@ namespace CUDATone
 
 		public AudioHandling AH;
 		public CudaContextHandling CudaH;
+		public GuiBuilder GuiB;
 
 
 
@@ -32,6 +33,8 @@ namespace CUDATone
 			// Init. classes
 			this.AH = new AudioHandling(this.Repopath, this.listBox_log, this.listBox_tracks, this.pictureBox_wave, this.hScrollBar_offset, this.button_play, this.textBox_time, this.label_meta, this.numericUpDown_zoom, this.vScrollBar_volume, this.checkBox_mute);
 			this.CudaH = new CudaContextHandling(this.Repopath, this.listBox_log, this.comboBox_devices, this.comboBox_kernels, this.progressBar_vram);
+			this.GuiB = new GuiBuilder(this.Repopath, this.listBox_log, this.CudaH, this.AH, this.panel_kernel, this.checkBox_silent);
+
 
 			// Register events
 			this.listBox_tracks.DoubleClick += (s, e) => this.MoveTrack(this.listBox_tracks.SelectedIndex);
@@ -319,6 +322,9 @@ namespace CUDATone
 				}
 				return;
 			}
+
+			// Reset progress bar
+			this.progressBar_loading.Value = 0;
 
 			// Optionally move back to host
 			if (moved && track.OnDevice)

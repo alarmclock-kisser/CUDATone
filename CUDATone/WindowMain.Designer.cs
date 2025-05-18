@@ -56,6 +56,7 @@
 			this.groupBox_fft = new GroupBox();
 			this.groupBox_controls = new GroupBox();
 			this.label_info_zoom = new Label();
+			this.panel_kernel = new Panel();
 			((System.ComponentModel.ISupportInitialize) this.pictureBox_wave).BeginInit();
 			((System.ComponentModel.ISupportInitialize) this.numericUpDown_zoom).BeginInit();
 			((System.ComponentModel.ISupportInitialize) this.numericUpDown_chunkSize).BeginInit();
@@ -328,11 +329,19 @@
 			this.label_info_zoom.TabIndex = 7;
 			this.label_info_zoom.Text = "Zoom";
 			// 
+			// panel_kernel
+			// 
+			this.panel_kernel.Location = new Point(12, 88);
+			this.panel_kernel.Name = "panel_kernel";
+			this.panel_kernel.Size = new Size(234, 280);
+			this.panel_kernel.TabIndex = 27;
+			// 
 			// WindowMain
 			// 
 			this.AutoScaleDimensions = new SizeF(7F, 15F);
 			this.AutoScaleMode = AutoScaleMode.Font;
 			this.ClientSize = new Size(1784, 821);
+			this.Controls.Add(this.panel_kernel);
 			this.Controls.Add(this.groupBox_controls);
 			this.Controls.Add(this.groupBox_fft);
 			this.Controls.Add(this.vScrollBar_volume);
@@ -392,5 +401,6 @@
 		private GroupBox groupBox_fft;
 		private GroupBox groupBox_controls;
 		private Label label_info_zoom;
+		private Panel panel_kernel;
 	}
 }

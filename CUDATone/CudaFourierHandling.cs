@@ -5,6 +5,7 @@ using ManagedCuda.VectorTypes;
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Reflection;
 using System.Text;
 using System.Threading.Tasks;
 
@@ -40,7 +41,7 @@ namespace CUDATone
 
 			if (this.LogList.InvokeRequired)
 			{
-				this.LogList.Invoke((MethodInvoker) (() => {
+				this.LogList.Invoke((System.Windows.Forms.MethodInvoker) (() => {
 					this.LogList.Items.Add(msg);
 					this.LogList.SelectedIndex = this.LogList.Items.Count - 1;
 				}));
@@ -238,6 +239,11 @@ namespace CUDATone
 				int total = pointers.Length;
 				int processed = 0;
 
+				if (!silent)
+				{
+					this.Log($"Starting FFT on {total} buffers...", "", 1);
+				}
+
 				foreach (IntPtr pointer in pointers)
 				{
 					var obj = this.MemoryH.GetBuffer(pointer);
@@ -251,7 +257,7 @@ namespace CUDATone
 						continue;
 					}
 
-					IntPtr complexPointer = this.MemoryH.AllocateBuffer<float2>(length, silent);
+					IntPtr complexPointer = this.MemoryH.AllocateBuffer<float2>(length, true);
 					var complexBuffer = this.MemoryH.GetBuffer(complexPointer);
 					if (complexBuffer == null)
 					{
@@ -272,7 +278,7 @@ namespace CUDATone
 
 					if (!silent)
 					{
-						this.Log($"Executed FFT", "<" + pointer + ">", 2);
+						// this.Log($"Executed FFT", "<" + pointer + ">", 2);
 					}
 
 					if (!keep)
@@ -280,7 +286,7 @@ namespace CUDATone
 						this.MemoryH.FreeBuffer(pointer, silent);
 						if (!silent)
 						{
-							this.Log($"Freed buffer", "<" + pointer + ">", 2);
+							// this.Log($"Freed buffer", "<" + pointer + ">", 2);
 						}
 					}
 
@@ -296,7 +302,7 @@ namespace CUDATone
 
 				if (!silent)
 				{
-					this.Log($"Freed plan", $"{result.Count} transformed", 1);
+					this.Log($"Finished FFT action!", $"{result.Count} transformed", 1);
 				}
 
 				return result.ToArray();
@@ -326,6 +332,11 @@ namespace CUDATone
 				int total = pointers.Length;
 				int processed = 0;
 
+				if (!silent)
+				{
+					this.Log($"Starting I-FFT on {total} buffers...", "", 1);
+				}
+
 				foreach (IntPtr pointer in pointers)
 				{
 					var obj = this.MemoryH.GetBuffer(pointer);
@@ -339,7 +350,7 @@ namespace CUDATone
 						continue;
 					}
 
-					IntPtr floatPointer = this.MemoryH.AllocateBuffer<float>(length, silent);
+					IntPtr floatPointer = this.MemoryH.AllocateBuffer<float>(length, true);
 					var floatBuffer = this.MemoryH.GetBuffer(floatPointer);
 					if (floatBuffer == null)
 					{
@@ -360,7 +371,7 @@ namespace CUDATone
 
 					if (!silent)
 					{
-						this.Log($"Executed IFFT", "<" + pointer + ">", 2);
+						// this.Log($"Executed IFFT", "<" + pointer + ">", 2);
 					}
 
 					if (!keep)
@@ -368,7 +379,7 @@ namespace CUDATone
 						this.MemoryH.FreeBuffer(pointer);
 						if (!silent)
 						{
-							this.Log($"Freed buffer", "<" + pointer + ">", 2);
+							// this.Log($"Freed buffer", "<" + pointer + ">", 2);
 						}
 					}
 
@@ -384,7 +395,7 @@ namespace CUDATone
 
 				if (!silent)
 				{
-					this.Log($"Freed plan", $"{result.Count} transformed", 1);
+					this.Log($"Finished I-FFT action!", $"{result.Count} transformed", 1);
 				}
 
 				return result.ToArray();
