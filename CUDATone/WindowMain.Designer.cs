@@ -42,11 +42,26 @@
 			this.progressBar_vram = new ProgressBar();
 			this.progressBar_loading = new ProgressBar();
 			this.comboBox_kernels = new ComboBox();
-			this.button1 = new Button();
+			this.button0 = new Button();
 			this.button_info = new Button();
 			this.checkBox_silent = new CheckBox();
+			this.numericUpDown_chunkSize = new NumericUpDown();
+			this.numericUpDown_overlap = new NumericUpDown();
+			this.vScrollBar_volume = new VScrollBar();
+			this.checkBox_mute = new CheckBox();
+			this.button_fft = new Button();
+			this.button_normalize = new Button();
+			this.label_info_chunkSize = new Label();
+			this.label_info_overlap = new Label();
+			this.groupBox_fft = new GroupBox();
+			this.groupBox_controls = new GroupBox();
+			this.label_info_zoom = new Label();
 			((System.ComponentModel.ISupportInitialize) this.pictureBox_wave).BeginInit();
 			((System.ComponentModel.ISupportInitialize) this.numericUpDown_zoom).BeginInit();
+			((System.ComponentModel.ISupportInitialize) this.numericUpDown_chunkSize).BeginInit();
+			((System.ComponentModel.ISupportInitialize) this.numericUpDown_overlap).BeginInit();
+			this.groupBox_fft.SuspendLayout();
+			this.groupBox_controls.SuspendLayout();
 			this.SuspendLayout();
 			// 
 			// listBox_tracks
@@ -71,20 +86,20 @@
 			// 
 			this.hScrollBar_offset.Location = new Point(315, 792);
 			this.hScrollBar_offset.Name = "hScrollBar_offset";
-			this.hScrollBar_offset.Size = new Size(1274, 17);
+			this.hScrollBar_offset.Size = new Size(1254, 17);
 			this.hScrollBar_offset.TabIndex = 2;
 			// 
 			// pictureBox_wave
 			// 
 			this.pictureBox_wave.Location = new Point(318, 685);
 			this.pictureBox_wave.Name = "pictureBox_wave";
-			this.pictureBox_wave.Size = new Size(1268, 104);
+			this.pictureBox_wave.Size = new Size(1251, 104);
 			this.pictureBox_wave.TabIndex = 3;
 			this.pictureBox_wave.TabStop = false;
 			// 
 			// numericUpDown_zoom
 			// 
-			this.numericUpDown_zoom.Location = new Point(1712, 641);
+			this.numericUpDown_zoom.Location = new Point(116, 35);
 			this.numericUpDown_zoom.Maximum = new decimal(new int[] { 8192, 0, 0, 0 });
 			this.numericUpDown_zoom.Minimum = new decimal(new int[] { 1, 0, 0, 0 });
 			this.numericUpDown_zoom.Name = "numericUpDown_zoom";
@@ -94,7 +109,7 @@
 			// 
 			// button_play
 			// 
-			this.button_play.Location = new Point(1590, 641);
+			this.button_play.Location = new Point(6, 92);
 			this.button_play.Name = "button_play";
 			this.button_play.Size = new Size(23, 23);
 			this.button_play.TabIndex = 5;
@@ -103,10 +118,10 @@
 			// 
 			// textBox_time
 			// 
-			this.textBox_time.Location = new Point(1619, 641);
+			this.textBox_time.Location = new Point(35, 92);
 			this.textBox_time.Name = "textBox_time";
 			this.textBox_time.PlaceholderText = "0:00:00.000";
-			this.textBox_time.Size = new Size(87, 23);
+			this.textBox_time.Size = new Size(75, 23);
 			this.textBox_time.TabIndex = 6;
 			// 
 			// label_meta
@@ -120,7 +135,7 @@
 			// 
 			// button_export
 			// 
-			this.button_export.Location = new Point(1712, 612);
+			this.button_export.Location = new Point(116, 92);
 			this.button_export.Name = "button_export";
 			this.button_export.Size = new Size(60, 23);
 			this.button_export.TabIndex = 8;
@@ -130,7 +145,7 @@
 			// 
 			// button_import
 			// 
-			this.button_import.Location = new Point(1712, 583);
+			this.button_import.Location = new Point(116, 64);
 			this.button_import.Name = "button_import";
 			this.button_import.Size = new Size(60, 23);
 			this.button_import.TabIndex = 9;
@@ -170,14 +185,14 @@
 			this.comboBox_kernels.TabIndex = 13;
 			this.comboBox_kernels.Text = "Select kernel to load ...";
 			// 
-			// button1
+			// button0
 			// 
-			this.button1.Location = new Point(252, 59);
-			this.button1.Name = "button1";
-			this.button1.Size = new Size(60, 23);
-			this.button1.TabIndex = 14;
-			this.button1.Text = "button1";
-			this.button1.UseVisualStyleBackColor = true;
+			this.button0.Location = new Point(252, 59);
+			this.button0.Name = "button0";
+			this.button0.Size = new Size(60, 23);
+			this.button0.TabIndex = 14;
+			this.button0.Text = "button0";
+			this.button0.UseVisualStyleBackColor = true;
 			// 
 			// button_info
 			// 
@@ -199,24 +214,136 @@
 			this.checkBox_silent.Text = "Silent log?";
 			this.checkBox_silent.UseVisualStyleBackColor = true;
 			// 
+			// numericUpDown_chunkSize
+			// 
+			this.numericUpDown_chunkSize.Location = new Point(103, 35);
+			this.numericUpDown_chunkSize.Maximum = new decimal(new int[] { 16384, 0, 0, 0 });
+			this.numericUpDown_chunkSize.Minimum = new decimal(new int[] { 128, 0, 0, 0 });
+			this.numericUpDown_chunkSize.Name = "numericUpDown_chunkSize";
+			this.numericUpDown_chunkSize.Size = new Size(73, 23);
+			this.numericUpDown_chunkSize.TabIndex = 17;
+			this.numericUpDown_chunkSize.Value = new decimal(new int[] { 2048, 0, 0, 0 });
+			// 
+			// numericUpDown_overlap
+			// 
+			this.numericUpDown_overlap.Location = new Point(103, 78);
+			this.numericUpDown_overlap.Name = "numericUpDown_overlap";
+			this.numericUpDown_overlap.Size = new Size(73, 23);
+			this.numericUpDown_overlap.TabIndex = 18;
+			this.numericUpDown_overlap.Value = new decimal(new int[] { 50, 0, 0, 0 });
+			// 
+			// vScrollBar_volume
+			// 
+			this.vScrollBar_volume.Location = new Point(1572, 685);
+			this.vScrollBar_volume.Name = "vScrollBar_volume";
+			this.vScrollBar_volume.Size = new Size(17, 104);
+			this.vScrollBar_volume.TabIndex = 19;
+			this.vScrollBar_volume.Value = 100;
+			// 
+			// checkBox_mute
+			// 
+			this.checkBox_mute.AutoSize = true;
+			this.checkBox_mute.Location = new Point(35, 67);
+			this.checkBox_mute.Name = "checkBox_mute";
+			this.checkBox_mute.Size = new Size(59, 19);
+			this.checkBox_mute.TabIndex = 20;
+			this.checkBox_mute.Text = "Mute?";
+			this.checkBox_mute.UseVisualStyleBackColor = true;
+			// 
+			// button_fft
+			// 
+			this.button_fft.Location = new Point(6, 78);
+			this.button_fft.Name = "button_fft";
+			this.button_fft.Size = new Size(73, 23);
+			this.button_fft.TabIndex = 21;
+			this.button_fft.Text = "(I)FFT";
+			this.button_fft.UseVisualStyleBackColor = true;
+			this.button_fft.Click += this.button_fft_Click;
+			// 
+			// button_normalize
+			// 
+			this.button_normalize.Location = new Point(6, 35);
+			this.button_normalize.Name = "button_normalize";
+			this.button_normalize.Size = new Size(75, 23);
+			this.button_normalize.TabIndex = 22;
+			this.button_normalize.Text = "Normalize";
+			this.button_normalize.UseVisualStyleBackColor = true;
+			this.button_normalize.Click += this.button_normalize_Click;
+			// 
+			// label_info_chunkSize
+			// 
+			this.label_info_chunkSize.AutoSize = true;
+			this.label_info_chunkSize.Location = new Point(103, 17);
+			this.label_info_chunkSize.Name = "label_info_chunkSize";
+			this.label_info_chunkSize.Size = new Size(64, 15);
+			this.label_info_chunkSize.TabIndex = 23;
+			this.label_info_chunkSize.Text = "Chunk size";
+			// 
+			// label_info_overlap
+			// 
+			this.label_info_overlap.AutoSize = true;
+			this.label_info_overlap.Location = new Point(103, 61);
+			this.label_info_overlap.Name = "label_info_overlap";
+			this.label_info_overlap.Size = new Size(61, 15);
+			this.label_info_overlap.TabIndex = 24;
+			this.label_info_overlap.Text = "Overlap %";
+			// 
+			// groupBox_fft
+			// 
+			this.groupBox_fft.Controls.Add(this.numericUpDown_overlap);
+			this.groupBox_fft.Controls.Add(this.button_normalize);
+			this.groupBox_fft.Controls.Add(this.label_info_overlap);
+			this.groupBox_fft.Controls.Add(this.button_fft);
+			this.groupBox_fft.Controls.Add(this.numericUpDown_chunkSize);
+			this.groupBox_fft.Controls.Add(this.label_info_chunkSize);
+			this.groupBox_fft.Location = new Point(1590, 427);
+			this.groupBox_fft.Name = "groupBox_fft";
+			this.groupBox_fft.Size = new Size(182, 107);
+			this.groupBox_fft.TabIndex = 25;
+			this.groupBox_fft.TabStop = false;
+			this.groupBox_fft.Text = "CUDA FFT";
+			// 
+			// groupBox_controls
+			// 
+			this.groupBox_controls.Controls.Add(this.label_info_zoom);
+			this.groupBox_controls.Controls.Add(this.button_play);
+			this.groupBox_controls.Controls.Add(this.checkBox_mute);
+			this.groupBox_controls.Controls.Add(this.textBox_time);
+			this.groupBox_controls.Controls.Add(this.numericUpDown_zoom);
+			this.groupBox_controls.Controls.Add(this.button_import);
+			this.groupBox_controls.Controls.Add(this.button_export);
+			this.groupBox_controls.Location = new Point(1590, 540);
+			this.groupBox_controls.Name = "groupBox_controls";
+			this.groupBox_controls.Size = new Size(182, 121);
+			this.groupBox_controls.TabIndex = 26;
+			this.groupBox_controls.TabStop = false;
+			this.groupBox_controls.Text = "Controls";
+			// 
+			// label_info_zoom
+			// 
+			this.label_info_zoom.AutoSize = true;
+			this.label_info_zoom.Location = new Point(116, 17);
+			this.label_info_zoom.Name = "label_info_zoom";
+			this.label_info_zoom.Size = new Size(39, 15);
+			this.label_info_zoom.TabIndex = 7;
+			this.label_info_zoom.Text = "Zoom";
+			// 
 			// WindowMain
 			// 
 			this.AutoScaleDimensions = new SizeF(7F, 15F);
 			this.AutoScaleMode = AutoScaleMode.Font;
 			this.ClientSize = new Size(1784, 821);
+			this.Controls.Add(this.groupBox_controls);
+			this.Controls.Add(this.groupBox_fft);
+			this.Controls.Add(this.vScrollBar_volume);
 			this.Controls.Add(this.checkBox_silent);
 			this.Controls.Add(this.button_info);
-			this.Controls.Add(this.button1);
+			this.Controls.Add(this.button0);
 			this.Controls.Add(this.comboBox_kernels);
 			this.Controls.Add(this.progressBar_loading);
 			this.Controls.Add(this.progressBar_vram);
 			this.Controls.Add(this.comboBox_devices);
-			this.Controls.Add(this.button_import);
-			this.Controls.Add(this.button_export);
 			this.Controls.Add(this.label_meta);
-			this.Controls.Add(this.textBox_time);
-			this.Controls.Add(this.button_play);
-			this.Controls.Add(this.numericUpDown_zoom);
 			this.Controls.Add(this.pictureBox_wave);
 			this.Controls.Add(this.hScrollBar_offset);
 			this.Controls.Add(this.listBox_log);
@@ -225,6 +352,12 @@
 			this.Text = "CUDATone";
 			((System.ComponentModel.ISupportInitialize) this.pictureBox_wave).EndInit();
 			((System.ComponentModel.ISupportInitialize) this.numericUpDown_zoom).EndInit();
+			((System.ComponentModel.ISupportInitialize) this.numericUpDown_chunkSize).EndInit();
+			((System.ComponentModel.ISupportInitialize) this.numericUpDown_overlap).EndInit();
+			this.groupBox_fft.ResumeLayout(false);
+			this.groupBox_fft.PerformLayout();
+			this.groupBox_controls.ResumeLayout(false);
+			this.groupBox_controls.PerformLayout();
 			this.ResumeLayout(false);
 			this.PerformLayout();
 		}
@@ -245,8 +378,19 @@
 		private ProgressBar progressBar_vram;
 		private ProgressBar progressBar_loading;
 		private ComboBox comboBox_kernels;
-		private Button button1;
+		private Button button0;
 		private Button button_info;
 		private CheckBox checkBox_silent;
+		private NumericUpDown numericUpDown_chunkSize;
+		private NumericUpDown numericUpDown_overlap;
+		private VScrollBar vScrollBar_volume;
+		private CheckBox checkBox_mute;
+		private Button button_fft;
+		private Button button_normalize;
+		private Label label_info_chunkSize;
+		private Label label_info_overlap;
+		private GroupBox groupBox_fft;
+		private GroupBox groupBox_controls;
+		private Label label_info_zoom;
 	}
 }

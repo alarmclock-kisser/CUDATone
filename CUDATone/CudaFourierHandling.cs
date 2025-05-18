@@ -60,7 +60,7 @@ namespace CUDATone
 
 
 
-		public List<IntPtr> ExecuteFFT(List<IntPtr> pointers, bool keep = false, bool silent = false)
+		public IntPtr[] ExecuteFFT(IntPtr[] pointers, bool keep = false, bool silent = false)
 		{
 			// Result list
 			List<IntPtr> result = [];
@@ -111,7 +111,7 @@ namespace CUDATone
 				if (!silent)
 				{
 					// Log
-					this.Log($"Executed FFT", "<" + pointer + ">", 1);
+					this.Log($"Executed FFT", "<" + pointer + ">", 2);
 				}
 
 				// Free buffer if not keeping
@@ -120,7 +120,7 @@ namespace CUDATone
 					this.MemoryH.FreeBuffer(pointer, silent);
 					if (!silent)
 					{
-						this.Log($"Freed buffer", "<" + pointer + ">", 1);
+						this.Log($"Freed buffer", "<" + pointer + ">", 2);
 					}
 				}
 			}
@@ -134,10 +134,10 @@ namespace CUDATone
 			}
 
 			// Return result
-			return result;
+			return result.ToArray();
 		}
 
-		public List<IntPtr> ExecuteIFFT(List<IntPtr> pointers, bool keep = false, bool silent = false)
+		public IntPtr[] ExecuteIFFT(IntPtr[] pointers, bool keep = false, bool silent = false)
 		{
 			// Result list
 			List<IntPtr> result = [];
@@ -188,16 +188,16 @@ namespace CUDATone
 				if (!silent)
 				{
 					// Log
-					this.Log($"Executed IFFT", "<" + pointer + ">", 1);
+					this.Log($"Executed IFFT", "<" + pointer + ">", 2);
 				}
 
 				// Free buffer if not keeping
 				if (!keep)
 				{
-					this.MemoryH.FreeBuffer(pointer, silent);
+					this.MemoryH.FreeBuffer(pointer);
 					if (!silent)
 					{
-						this.Log($"Freed buffer", "<" + pointer + ">", 1);
+						this.Log($"Freed buffer", "<" + pointer + ">", 2);
 					}
 				}
 			}
@@ -211,8 +211,186 @@ namespace CUDATone
 			}
 
 			// Return result
-			return result;
+			return result.ToArray();
 		}
+
+
+
+		public async Task<IntPtr[]> ExecuteFFTAsync(IntPtr[] pointers, bool keep = false, bool silent = false, ProgressBar? pBar = null)
+		{
+			return await Task.Run(() =>
+			{
+				List<IntPtr> result = [];
+
+				if (pointers == null || pointers.Length == 0)
+				{
+					return result.ToArray();
+				}
+
+				IntPtr length = this.MemoryH.GetBuffer(pointers.FirstOrDefault())?.Length ?? 0;
+				if (length == IntPtr.Zero)
+				{
+					return result.ToArray();
+				}
+
+				var plan = new CudaFFTPlan1D((int) length, cufftType.R2C, 1);
+
+				int total = pointers.Length;
+				int processed = 0;
+
+				foreach (IntPtr pointer in pointers)
+				{
+					var obj = this.MemoryH.GetBuffer(pointer);
+					if (obj == null || obj.Length == 0)
+					{
+						if (!silent)
+						{
+							this.Log($"Couldn't get buffer", "<" + pointer + ">", 1);
+						}
+
+						continue;
+					}
+
+					IntPtr complexPointer = this.MemoryH.AllocateBuffer<float2>(length, silent);
+					var complexBuffer = this.MemoryH.GetBuffer(complexPointer);
+					if (complexBuffer == null)
+					{
+						if (!silent)
+						{
+							this.Log($"Couldn't allocate complex", "<" + complexPointer + ">", 1);
+						}
+
+						return pointers;
+					}
+
+					result.Add(complexPointer);
+
+					var devicePointer = new CUdeviceptr(pointer);
+					var complexDevicePointer = new CUdeviceptr(complexPointer);
+
+					plan.Exec(devicePointer, complexDevicePointer);
+
+					if (!silent)
+					{
+						this.Log($"Executed FFT", "<" + pointer + ">", 2);
+					}
+
+					if (!keep)
+					{
+						this.MemoryH.FreeBuffer(pointer, silent);
+						if (!silent)
+						{
+							this.Log($"Freed buffer", "<" + pointer + ">", 2);
+						}
+					}
+
+					// ProgressBar update
+					processed++;
+					if (pBar != null && pBar.InvokeRequired)
+					{
+						pBar.Invoke(() => pBar.Value = Math.Min(pBar.Maximum, processed * pBar.Maximum / total));
+					}
+				}
+
+				plan.Dispose();
+
+				if (!silent)
+				{
+					this.Log($"Freed plan", $"{result.Count} transformed", 1);
+				}
+
+				return result.ToArray();
+			});
+		}
+
+
+		public async Task<IntPtr[]> ExecuteIFFTAsync(IntPtr[] pointers, bool keep = false, bool silent = false, ProgressBar? pBar = null)
+		{
+			return await Task.Run(() =>
+			{
+				List<IntPtr> result = [];
+
+				if (pointers == null || pointers.Length == 0)
+				{
+					return result.ToArray();
+				}
+
+				IntPtr length = this.MemoryH.GetBuffer(pointers.FirstOrDefault())?.Length ?? 0;
+				if (length == IntPtr.Zero)
+				{
+					return result.ToArray();
+				}
+
+				var plan = new CudaFFTPlan1D((int) length, cufftType.C2R, 1);
+
+				int total = pointers.Length;
+				int processed = 0;
+
+				foreach (IntPtr pointer in pointers)
+				{
+					var obj = this.MemoryH.GetBuffer(pointer);
+					if (obj == null || obj.Length == 0)
+					{
+						if (!silent)
+						{
+							this.Log($"Couldn't get buffer", "<" + pointer + ">", 1);
+						}
+
+						continue;
+					}
+
+					IntPtr floatPointer = this.MemoryH.AllocateBuffer<float>(length, silent);
+					var floatBuffer = this.MemoryH.GetBuffer(floatPointer);
+					if (floatBuffer == null)
+					{
+						if (!silent)
+						{
+							this.Log($"Couldn't allocate float", "<" + floatPointer + ">", 1);
+						}
+
+						return pointers;
+					}
+
+					result.Add(floatPointer);
+
+					var devicePointer = new CUdeviceptr(pointer);
+					var floatDevicePointer = new CUdeviceptr(floatPointer);
+
+					plan.Exec(devicePointer, floatDevicePointer);
+
+					if (!silent)
+					{
+						this.Log($"Executed IFFT", "<" + pointer + ">", 2);
+					}
+
+					if (!keep)
+					{
+						this.MemoryH.FreeBuffer(pointer);
+						if (!silent)
+						{
+							this.Log($"Freed buffer", "<" + pointer + ">", 2);
+						}
+					}
+
+					// ProgressBar update
+					processed++;
+					if (pBar != null && pBar.InvokeRequired)
+					{
+						pBar.Invoke(() => pBar.Value = Math.Min(pBar.Maximum, processed * pBar.Maximum / total));
+					}
+				}
+
+				plan.Dispose();
+
+				if (!silent)
+				{
+					this.Log($"Freed plan", $"{result.Count} transformed", 1);
+				}
+
+				return result.ToArray();
+			});
+		}
+
 
 
 

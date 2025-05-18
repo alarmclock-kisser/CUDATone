@@ -1,6 +1,7 @@
 ﻿
 using ManagedCuda;
 using ManagedCuda.BasicTypes;
+using System.Diagnostics;
 using System.Runtime.InteropServices;
 
 namespace CUDATone
@@ -64,6 +65,9 @@ namespace CUDATone
 			{
 				return 0;
 			}
+
+			// Set current
+			this.Context.SetCurrent();
 
 			// Get size
 			long size = this.GetBufferSize(pointer, readable);
@@ -155,6 +159,9 @@ namespace CUDATone
 				return 0;
 			}
 
+			// Set current
+			this.Context.SetCurrent();
+
 			// Get length pointer
 			IntPtr length = (nint) data.LongCount();
 
@@ -198,6 +205,9 @@ namespace CUDATone
 				return [];
 			}
 
+			// Set current
+			this.Context.SetCurrent();
+
 			// Create array with long count
 			T[] data = new T[obj.Length];
 
@@ -226,9 +236,9 @@ namespace CUDATone
 			return data;
 		}
 
-		public List<IntPtr> PushChunks<T>(List<T[]> data, bool silent = false) where T : unmanaged
+		public IntPtr[] PushChunks<T>(List<T[]> data, bool silent = false) where T : unmanaged
 		{
-					// Check data
+			// Check data
 			if (data == null || !data.Any())
 			{
 				if (!silent)
@@ -238,29 +248,47 @@ namespace CUDATone
 				return [];
 			}
 
-			// Create list of pointers
-			List<IntPtr> pointers = new();
-			
+			// Create list of pointers + stopwatch
+			List<IntPtr> pointers = [];
+			Stopwatch sw = Stopwatch.StartNew();
+
 			// Push each chunk
 			foreach (T[] chunk in data)
 			{
-				IntPtr pointer = this.PushData(chunk, silent);
+				IntPtr pointer = this.PushData(chunk, true);
 				pointers.Add(pointer);
 			}
 
-			return pointers;
+			// Log
+			sw.Stop();
+			if (!silent)
+			{
+				long sizeKb = pointers.Sum(x => this.GetBufferSize(x)) / 1024;
+				this.Log($"Pushed {pointers.Count} chunks", $"{sizeKb} kb, {sw.ElapsedMilliseconds} ms", 1);
+			}
+
+			return pointers.ToArray();
 		}
 
-		public List<T[]> PullChunks<T>(List<IntPtr> pointers, bool free = false, bool silent = false) where T : unmanaged
+		public List<T[]> PullChunks<T>(IntPtr[] pointers, bool free = false, bool silent = false) where T : unmanaged
 		{
-			// Create list of chunks
-			List<T[]> chunks = new();
+			// Create list of chunks + stopwatch
+			List<T[]> chunks = [];
+			Stopwatch sw = Stopwatch.StartNew();
 			
 			// Pull each chunk
 			foreach (IntPtr pointer in pointers)
 			{
-				T[] chunk = this.PullData<T>(pointer, free, silent);
+				T[] chunk = this.PullData<T>(pointer, free, true);
 				chunks.Add(chunk);
+			}
+
+			// Log
+			sw.Stop();
+			if (!silent)
+			{
+				long sizeKb = chunks.Sum(x => (long) x.Length * Marshal.SizeOf(typeof(T))) / 1024;
+				this.Log($"Pulled {chunks.Count} chunks", $"{sizeKb} kB, {sw.ElapsedMilliseconds} ms", 1);
 			}
 
 			return chunks;
@@ -280,6 +308,8 @@ namespace CUDATone
 
 				return 0;
 			}
+
+			this.Context.SetCurrent();
 
 			// Allocate buffer
 			CudaDeviceVariable<T> buffer = new(length);
@@ -335,17 +365,29 @@ namespace CUDATone
 
 		public long GetTotalMemory(bool asMegabytes = false)
 		{
-			// Get total memory
-			long totalSize = this.Context.GetTotalDeviceMemorySize();
-			
-			// Convert to megabytes
-			if (asMegabytes)
+			try
 			{
-				totalSize /= 1024 * 1024;
-			}
+				// Ensure context is current
+				this.Context.SetCurrent();
 
-			return totalSize;
+				// Get total memory
+				long totalSize = this.Context.GetTotalDeviceMemorySize();
+
+				// Convert to megabytes
+				if (asMegabytes)
+				{
+					totalSize /= 1024 * 1024;
+				}
+
+				return totalSize;
+			}
+			catch (CudaException ex)
+			{
+				this.Log("CUDA Context error: " + ex.Message, "GetTotalMemory()", 1);
+				throw;
+			}
 		}
+
 
 		public long GetFreeMemory(bool asMegabytes = false)
 		{
@@ -365,16 +407,32 @@ namespace CUDATone
 		// UI
 		public void UpdateProgressBar()
 		{
-			// Get total memory usage
-			long totalSize = this.GetTotalMemoryUsage(true, true);
+			try
+			{
+				// Holen, falls im falschen Thread
+				if (this.VramBar.InvokeRequired)
+				{
+					this.VramBar.Invoke(new Action(this.UpdateProgressBar));
+					return;
+				}
 
-			// Get total memory available
-			long totalAvailable = this.GetTotalMemory(true);
+				// Aktueller Thread ist der UI-Thread: sicher fortfahren
+				long totalSize = this.GetTotalMemoryUsage(true, true);
+				long totalAvailable = this.GetTotalMemory(true);
 
-			// Update progress bar
-			this.VramBar.Maximum = (int) totalAvailable;
-			this.VramBar.Value = (int) totalSize;
+				// Clamp falls zu groß
+				int safeValue = (int) Math.Min(totalSize, this.VramBar.Maximum);
+				int safeMax = (int) Math.Max(safeValue, 1); // Minimum 1
+
+				this.VramBar.Maximum = (int) totalAvailable;
+				this.VramBar.Value = safeValue;
+			}
+			catch (Exception ex)
+			{
+				this.Log("Error refreshin progress bar value: " + ex.Message, "UpdateProgressBar", 1);
+			}
 		}
+
 	}
 
 

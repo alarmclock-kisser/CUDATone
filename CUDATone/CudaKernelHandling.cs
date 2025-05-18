@@ -896,7 +896,9 @@ namespace CUDATone
 					int estTotalMs = (int) (averageMs * maxIterations * 1.5);
 					int newMax = Math.Max(pBar.Maximum, estTotalMs);
 					if (pBar.Maximum != newMax)
+					{
 						pBar.Invoke(() => pBar.Maximum = newMax);
+					}
 
 					int progressValue = (int) (averageMs * (i + 1));
 					pBar.Invoke(() => pBar.Value = Math.Min(progressValue, pBar.Maximum));

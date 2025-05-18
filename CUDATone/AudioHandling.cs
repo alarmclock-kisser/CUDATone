@@ -21,6 +21,8 @@ namespace CUDATone
 		private TextBox TimeText;
 		private Label MetaLabel;
 		private NumericUpDown ZoomNumeric;
+		private VScrollBar VolumeScroll;
+		private CheckBox MuteCheck;
 
 		public Color GraphColor {  get; set; } = Color.FromName("HotTrack");
 		public Color BackColor
@@ -39,12 +41,15 @@ namespace CUDATone
 		private bool isPlaying = false;
 		private CancellationTokenSource playbackCancellation;
 		private int oldZoomValue = 0;
+		private bool isMuted = false;
+		private float lastVolume = 0.8f;
 
 		// ----- ----- ----- CONSTRUCTOR ----- ----- ----- \\
 		public AudioHandling(string repopath, ListBox listBox_log, ListBox listBox_tracks,
 							PictureBox pictureBox_waveform, HScrollBar hScrollBar_offset,
 							Button button_playback, TextBox textBox_timestamp,
-							Label label_meta, NumericUpDown numericUpDown_zoom)
+							Label label_meta, NumericUpDown numericUpDown_zoom,
+							VScrollBar vScrollBar_volume, CheckBox checkBox_mute)
 		{
 			this.Repopath = repopath;
 			this.LogList = listBox_log;
@@ -55,6 +60,8 @@ namespace CUDATone
 			this.TimeText = textBox_timestamp;
 			this.MetaLabel = label_meta;
 			this.ZoomNumeric = numericUpDown_zoom;
+			this.VolumeScroll = vScrollBar_volume;
+			this.MuteCheck = checkBox_mute;
 			this.playbackCancellation = new CancellationTokenSource();
 
 			// Initialize events
@@ -65,7 +72,7 @@ namespace CUDATone
 			this.ZoomNumeric.ValueChanged += (s, e) => this.ToggleZoom();
 			this.WavePBox.MouseWheel += (s, e) =>
 			{
-				if (e.Delta > 0)
+				if (e.Delta < 0)
 				{
 					this.ZoomNumeric.Value = Math.Min(this.ZoomNumeric.Maximum, this.ZoomNumeric.Value + 1);
 				}
@@ -81,6 +88,19 @@ namespace CUDATone
 					this.RemoveTrack(this.TrackList.SelectedIndex);
 				}
 			};
+
+			// Volume-Scroll initialisieren
+			this.VolumeScroll = vScrollBar_volume;
+			this.VolumeScroll.Minimum = 0;
+			this.VolumeScroll.Maximum = 100;
+			this.VolumeScroll.Value = 80; // Standard-Lautstärke (20%)
+			this.VolumeScroll.Scroll += (s, e) => this.UpdateVolume();
+
+			// Mute-Checkbox
+			this.MuteCheck.CheckedChanged += (s, e) => this.ToggleMute();
+
+			// Initiale Lautstärke setzen (direkt beim Start)
+			this.lastVolume = (100 - this.VolumeScroll.Value) / 100f; // 0.0f (leise) bis 1.0f (laut)
 
 			// Initialize UI
 			this.oldZoomValue = (int) this.ZoomNumeric.Value;
@@ -219,7 +239,59 @@ namespace CUDATone
 			this.UpdateWaveform();
 		}
 
+		public void ToggleMute()
+		{
+			if (this.CurrentObject == null)
+			{
+				return;
+			}
+
+			this.isMuted = !this.isMuted;
+			if (this.isMuted)
+			{
+				this.MuteCheck.Text = "Muted";
+				this.CurrentObject.Player.Volume = 0;
+			}
+			else
+			{
+				this.MuteCheck.Text = "Mute?";
+				this.CurrentObject.Player.Volume = this.lastVolume;
+			}
+		}
+
+		public void Normalize(int index = -1, float maxAmplitude = 1.0f)
+		{
+			if (index == -1)
+			{
+				index = this.TrackList.SelectedIndex;
+			}
+			if (index < 0 || index >= this.Tracks.Count)
+			{
+				return;
+			}
+
+			this.Tracks[index].Normalize(maxAmplitude);
+		}
+
 		// ----- ----- ----- PRIVATE METHODS ----- ----- ----- \\
+		private void UpdateVolume()
+		{
+			if (this.CurrentObject == null || this.CurrentObject.Player == null)
+			{
+				return;
+			}
+
+			// Invertiert: 100 (Scroll ganz unten) → 0.0f (leise), 0 (ganz oben) → 1.0f (laut)
+			float volume = (100 - this.VolumeScroll.Value) / 100f;
+
+			// Nur aktualisieren, wenn nicht stummgeschaltet
+			if (!this.isMuted)
+			{
+				this.CurrentObject.Player.Volume = volume;
+			}
+			this.lastVolume = volume;
+		}
+
 		private void ToggleZoom()
 		{
 			// If value increased, double, else halve
@@ -338,15 +410,19 @@ namespace CUDATone
 			else
 			{
 				this.playbackCancellation = new CancellationTokenSource();
+
+				// Lautstärke aus VolumeScroll lesen (invertiert: 100 → 0.0f, 0 → 1.0f)
+				float initialVolume = (100 - this.VolumeScroll.Value) / 100f;
+
+				// Play mit initialer Lautstärke aufrufen
 				this.CurrentObject.Play(this.playbackCancellation.Token, () =>
 				{
 					this.UpdateButtonState(false);
 					this.isPlaying = false;
-				});
+				}, initialVolume);
+
 				this.UpdateButtonState(true);
 				this.isPlaying = true;
-
-				// Start position update thread
 				Task.Run(this.UpdatePlaybackPosition, this.playbackCancellation.Token);
 			}
 		}
@@ -510,7 +586,7 @@ namespace CUDATone
 			return bytes;
 		}
 
-		public List<float[]> GetChunks(int size = 2048, float overlap = 0.5f)
+		public List<float[]> GetChunksOld(int size = 2048, float overlap = 0.5f)
 		{
 			if (this.Data == null || this.Data.Length == 0)
 			{
@@ -540,6 +616,39 @@ namespace CUDATone
 			return chunks;
 		}
 
+		public List<float[]> GetChunks(int size = 2048, float overlap = 0.5f)
+		{
+			if (this.Data == null || this.Data.Length == 0)
+			{
+				return [];
+			}
+
+			if (size <= 0 || overlap < 0 || overlap >= 1)
+			{
+				return [];
+			}
+
+			this.ChunkSize = size;
+			this.OverlapSize = (int) (size * overlap);
+			int step = size - this.OverlapSize;
+			int numChunks = (this.Data.Length - size) / step + 1;
+
+			// Parallel vorbereiten
+			float[][] chunks = new float[numChunks][];
+
+			Parallel.For(0, numChunks, i =>
+			{
+				int sourceOffset = i * step;
+				float[] chunk = new float[size];
+				Array.Copy(this.Data, sourceOffset, chunk, 0, size);
+				chunks[i] = chunk;
+			});
+
+			// In List umwandeln
+			return chunks.ToList();
+		}
+
+
 		public void AggregateChunks(List<float[]> chunks)
 		{
 			if (chunks == null || chunks.Count == 0)
@@ -550,33 +659,73 @@ namespace CUDATone
 			int size = this.ChunkSize;
 			int step = size - this.OverlapSize;
 			int outputLength = (chunks.Count - 1) * step + size;
-			this.Data = new float[outputLength];
 
-			// Initialize output with zeros
-			Array.Clear(this.Data, 0, outputLength);
+			// Zielpuffer vorbereiten
+			float[] output = new float[outputLength];
+			float[] weightSum = new float[outputLength];
 
-			// Standard Overlap-Add Algorithm
-			for (int i = 0; i < chunks.Count; i++)
-			{
-				int offset = i * step;
-				float[] chunk = chunks[i];
+			// Parallel lokal puffern, dann atomar addieren
+			int processorCount = Environment.ProcessorCount;
 
-				for (int j = 0; j < size; j++)
+			Parallel.For(0, chunks.Count, () =>
+				(new float[outputLength], new float[outputLength]),
+
+				(i, state, local) =>
 				{
-					this.Data[offset + j] += chunk[j]; // Accumulate samples
+					var (localData, localWeight) = local;
+					float[] chunk = chunks[i];
+					int offset = i * step;
+
+					for (int j = 0; j < size; j++)
+					{
+						int idx = offset + j;
+						localData[idx] += chunk[j];
+						localWeight[idx] += 1f;
+					}
+					return (localData, localWeight);
+				},
+
+				local =>
+				{
+					var (localData, localWeight) = local;
+					lock (output) // kurzes Lock für zusammenführung
+					{
+						for (int i = 0; i < outputLength; i++)
+						{
+							output[i] += localData[i];
+							weightSum[i] += localWeight[i];
+						}
+					}
 				}
-			}
+			);
+
+			// Normalisierung
+			Parallel.For(0, outputLength, i =>
+			{
+				if (weightSum[i] > 0f)
+				{
+					output[i] /= weightSum[i];
+				}
+			});
+
+			// Setze das Ergebnis
+			this.Data = output;
 		}
 
-		public void Play(CancellationToken cancellationToken, Action? onPlaybackStopped = null)
+
+
+		public void Play(CancellationToken cancellationToken, Action? onPlaybackStopped = null, float initialVolume = 1.0f)
 		{
 			if (this.Data == null || this.Data.Length == 0)
 			{
 				throw new InvalidOperationException("No audio data loaded");
 			}
 
-			// Thread-sichere Initialisierung
-			this.Player = new();
+			this.Player = new WaveOutEvent
+			{
+				Volume = initialVolume
+			};
+
 			byte[] bytes = this.GetBytes();
 			WaveFormat waveFormat = WaveFormat.CreateIeeeFloatWaveFormat(this.Samplerate, this.Channels);
 			RawSourceWaveStream stream = new(new MemoryStream(bytes), waveFormat);
@@ -729,5 +878,48 @@ namespace CUDATone
 		
 			this.LoadAudioFile();
 		}
+
+		public void Normalize(float maxAmplitude = 1.0f)
+		{
+			if (this.Data == null || this.Data.Length == 0)
+			{
+				return;
+			}
+
+			// Schritt 1: Maximalwert (Betrag) ermitteln – parallel
+			float globalMax = 0f;
+			object lockObj = new object();
+
+			Parallel.For(0, this.Data.Length, () => 0f, (i, _, localMax) =>
+			{
+				float abs = Math.Abs(this.Data[i]);
+				return abs > localMax ? abs : localMax;
+			},
+			localMax =>
+			{
+				lock (lockObj)
+				{
+					if (localMax > globalMax)
+					{
+						globalMax = localMax;
+					}
+				}
+			});
+
+			// Kein Normalisieren nötig, wenn max = 0
+			if (globalMax == 0f)
+			{
+				return;
+			}
+
+			// Schritt 2: Daten parallel skalieren
+			float scale = maxAmplitude / globalMax;
+
+			Parallel.For(0, this.Data.Length, i =>
+			{
+				this.Data[i] *= scale;
+			});
+		}
+
 	}
 }
