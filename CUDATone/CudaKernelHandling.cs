@@ -51,14 +51,24 @@ namespace CUDATone
 
 
 		// ----- ----- METHODS ----- ----- \\
-		public string Log(string message = "", string inner = "", int indent = 0)
+		public void Log(string message = "", string inner = "", int indent = 0)
 		{
-			string indentString = new string('~', indent);
-			string logMessage = $"[Krn] {indentString}{message} ({inner})";
-			this.LogList.Items.Add(logMessage);
-			this.LogList.TopIndex = this.LogList.Items.Count - 1;
-			return logMessage;
+			string msg = $"[Kernel]: {new string(' ', indent * 2)}{message}{(string.IsNullOrEmpty(inner) ? "" : $" ({inner})")}";
+
+			if (this.LogList.InvokeRequired)
+			{
+				this.LogList.Invoke((MethodInvoker) (() => {
+					this.LogList.Items.Add(msg);
+					this.LogList.SelectedIndex = this.LogList.Items.Count - 1;
+				}));
+			}
+			else
+			{
+				this.LogList.Items.Add(msg);
+				this.LogList.SelectedIndex = this.LogList.Items.Count - 1;
+			}
 		}
+
 
 
 		public void Dispose()

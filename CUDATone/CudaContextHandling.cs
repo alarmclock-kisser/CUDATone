@@ -18,6 +18,7 @@ namespace CUDATone
 		public PrimaryContext? Context = null;
 
 		public CudaMemoryHandling? MemoryH;
+		public CudaFourierHandling? FourierH;
 		public CudaKernelHandling? KernelH;
 
 		// ----- ----- CONSTRUCTORS ----- ----- \\
@@ -32,20 +33,33 @@ namespace CUDATone
 			// Register events
 			this.DevicesCombo.SelectedIndexChanged += (s, e) => this.InitDevice(this.DevicesCombo.SelectedIndex);
 
+			// Fill devices combobox
+			this.FillDevicesCombobox();
+
 		}
 
 
 
 
 		// ----- ----- METHODS ----- ----- \\
-		public string Log(string message = "", string inner = "", int indent = 0)
+		public void Log(string message = "", string inner = "", int indent = 0)
 		{
-			string indentString = new string('~', indent);
-			string logMessage = $"[Ctx] {indentString}{message} ({inner})";
-			this.LogList.Items.Add(logMessage);
-			this.LogList.TopIndex = this.LogList.Items.Count - 1;
-			return logMessage;
+			string msg = $"[Context]: {new string(' ', indent * 2)}{message}{(string.IsNullOrEmpty(inner) ? "" : $" ({inner})")}";
+
+			if (this.LogList.InvokeRequired)
+			{
+				this.LogList.Invoke((MethodInvoker) (() => {
+					this.LogList.Items.Add(msg);
+					this.LogList.SelectedIndex = this.LogList.Items.Count - 1;
+				}));
+			}
+			else
+			{
+				this.LogList.Items.Add(msg);
+				this.LogList.SelectedIndex = this.LogList.Items.Count - 1;
+			}
 		}
+
 
 
 		public int GetDeviceCount()
@@ -166,6 +180,7 @@ namespace CUDATone
 			this.Context = new PrimaryContext(this.Device.Value);
 			this.Context.SetCurrent();
 			this.MemoryH = new CudaMemoryHandling(this.Repopath, this.LogList, this.Context, this.VramBar);
+			this.FourierH = new CudaFourierHandling(this.Repopath, this.LogList, this.Context, this.MemoryH);
 			this.KernelH = new CudaKernelHandling(this.Repopath, this.LogList, this.Context, this.MemoryH, this.KernelsCombo);
 
 			this.Log($"Initialized #{index}", this.GetName().Split(' ').FirstOrDefault() ?? "N/A");
@@ -179,8 +194,74 @@ namespace CUDATone
 			this.Device = null;
 			this.MemoryH?.Dispose();
 			this.MemoryH = null;
+			this.FourierH?.Dispose();
+			this.FourierH = null;
 			this.KernelH?.Dispose();
 			this.KernelH = null;
+		}
+
+		public List<string> GetInfo()
+		{
+			// Abort if not initialized
+			if (this.Context == null || this.Device == null || this.MemoryH == null || this.KernelH == null)
+			{
+				this.Log("Context not initialized", "Abort", 1);
+				return [];
+			}
+
+			List<string> info = [];
+
+			// Add name
+			info.Add($"Name: {this.GetName()}");
+
+			// Add capability
+			info.Add($"Capability: {this.GetCapability().Major}.{this.GetCapability().Minor}");
+
+			// Add memory
+			info.Add($"Total memory: {this.MemoryH.GetTotalMemory(true)} MB");
+			info.Add($"Used memory: {this.MemoryH.GetTotalMemoryUsage(true, true)} MB");
+			info.Add($"Free memory: {this.MemoryH.GetFreeMemory(true)} MB");
+
+			// Add pcie
+			info.Add($"PCIe index: {this.Context.GetDeviceInfo().PCIDomainID}");
+
+			// Add ecc
+			info.Add($"ECC enabled: {this.Context.GetDeviceInfo().EccEnabled}");
+
+			// Add bus
+			info.Add($"Bus width: {this.Context.GetDeviceInfo().GlobalMemoryBusWidth} bits");
+
+			// Add block
+			info.Add($"Max. block dim: {this.Context.GetDeviceInfo().MaxBlockDim}");
+
+			// Add grid
+			info.Add($"Max. grid dim: {this.Context.GetDeviceInfo().MaxGridDim}");
+
+			// Add blocks multi
+			info.Add($"Max. blocks / multi: {this.Context.GetDeviceInfo().MaxBlocksPerMultiProcessor}");
+
+			// Add async engines
+			info.Add($"Async engines: {this.Context.GetDeviceInfo().AsyncEngineCount}");
+
+			// Add threads block
+			info.Add($"Max. threads / block: {this.Context.GetDeviceInfo().MaxThreadsPerBlock}");
+
+			// Add threads multi
+			info.Add($"Max. threads / multi: {this.Context.GetDeviceInfo().MaxThreadsPerMultiProcessor}");
+
+			// Add clock
+			info.Add($"Clock rate: {this.Context.GetDeviceInfo().ClockRate / 1000} MHz");
+
+			// Add mem clock
+			info.Add($"Memory clock rate: {this.Context.GetDeviceInfo().MemoryClockRate / 2000} MHz");
+
+			// Add cores
+			info.Add($"Cores: {this.Context.GetDeviceInfo().MultiProcessorCount}");
+
+			// Add driver
+			info.Add($"Driver version: {this.Context.GetDeviceInfo().DriverVersion}");
+
+			return info;
 		}
 
 	}

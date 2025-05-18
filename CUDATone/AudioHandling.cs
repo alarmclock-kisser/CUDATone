@@ -74,11 +74,18 @@ namespace CUDATone
 					this.ZoomNumeric.Value = Math.Max(this.ZoomNumeric.Minimum, this.ZoomNumeric.Value - 1);
 				}
 			};
+			this.TrackList.MouseDown += (s, e) =>
+			{
+				if (Control.MouseButtons == MouseButtons.Right)
+				{
+					this.RemoveTrack(this.TrackList.SelectedIndex);
+				}
+			};
 
 			// Initialize UI
 			this.oldZoomValue = (int) this.ZoomNumeric.Value;
 			this.UpdateTrackList();
-			this.ImportResourcesAudio();
+			this.ImportResourcesAudio(true);
 		}
 
 		// ----- ----- ----- PROPERTIES ----- ----- ----- \\
@@ -126,7 +133,7 @@ namespace CUDATone
 			}
 		}
 
-		public void AddTrack(string filepath)
+		public void AddTrack(string filepath, bool silent = false)
 		{
 			if (string.IsNullOrEmpty(filepath))
 			{
@@ -139,11 +146,18 @@ namespace CUDATone
 				this.Tracks.Add(audioObject);
 				this.UpdateTrackList();
 				this.UpdateWaveform();
-				this.Log($"Track added: {Path.GetFileName(filepath)}");
+
+				if (!silent)
+				{
+					this.Log($"Track added: {Path.GetFileName(filepath)}");
+				}
 			}
 			catch (Exception ex)
 			{
-				this.Log("Error adding track", ex.Message, 1);
+				if (!silent)
+				{
+					this.Log("Error adding track", ex.Message, 1);
+				}
 			}
 
 			// Select last entry
@@ -162,7 +176,7 @@ namespace CUDATone
 			this.UpdateWaveform();
 		}
 
-		public string? Import()
+		public string? Import(bool silent = false)
 		{
 			using OpenFileDialog ofd = new();
 			ofd.Title = "Import audio file";
@@ -172,10 +186,26 @@ namespace CUDATone
 
 			if (ofd.ShowDialog() == DialogResult.OK)
 			{
-				this.AddTrack(ofd.FileName);
+				this.AddTrack(ofd.FileName, silent);
 				return ofd.FileName;
 			}
 			return null;
+		}
+
+		public void RemoveTrack(int index = -1)
+		{
+			if (index == -1)
+			{
+				index = this.TrackList.SelectedIndex;
+			}
+			if (index < 0 || index >= this.Tracks.Count)
+			{
+				return;
+			}
+
+			this.Tracks.RemoveAt(index);
+			this.UpdateTrackList();
+			this.UpdateWaveform();
 		}
 
 		public void UpdateView()
@@ -347,11 +377,11 @@ namespace CUDATone
 			}
 		}
 
-		private void ImportResourcesAudio()
+		private void ImportResourcesAudio(bool silent = false)
 		{
 			try
 			{
-				string dirPath = Path.Combine(this.Repopath, "Resources", "Audio");
+				string dirPath = Path.Combine(this.Repopath, "Resources", "Audios");
 				if (!Directory.Exists(dirPath))
 				{
 					return;
@@ -363,12 +393,15 @@ namespace CUDATone
 
 				foreach (string file in files)
 				{
-					this.AddTrack(file);
+					this.AddTrack(file, silent);
 				}
 			}
 			catch (Exception ex)
 			{
-				this.Log("Error loading resources", ex.Message, 1);
+				if (!silent)
+				{
+					this.Log("Error loading resources", ex.Message, 1);
+				}
 			}
 		}
 	}
@@ -384,7 +417,10 @@ namespace CUDATone
 		public int Channels { get; set; } = -1;
 		public long Length { get; set; } = -1;
 
-		public long Pointer { get; set; } = 0;
+		public IntPtr[] Pointers { get; set; } = [];
+		public int ChunkSize { get; private set; } = 0;
+		public int OverlapSize { get; private set; } = 0;
+
 		public WaveOutEvent Player { get; set; } = new WaveOutEvent();
 
 		// ----- ----- ----- PROPERTIES ----- ----- ----- \\
@@ -407,8 +443,8 @@ namespace CUDATone
 		}
 
 
-		public bool OnHost => this.Data.Length > 0 && this.Pointer == 0;
-		public bool OnDevice => this.Data.Length == 0 && this.Pointer != 0;
+		public bool OnHost => this.Data.Length > 0 && this.Pointers.Length == 0;
+		public bool OnDevice => this.Data.Length == 0 && this.Pointers.Length != 0;
 
 
 		// ----- ----- ----- CONSTRUCTOR ----- ----- ----- \\
@@ -472,6 +508,64 @@ namespace CUDATone
 			});
 
 			return bytes;
+		}
+
+		public List<float[]> GetChunks(int size = 2048, float overlap = 0.5f)
+		{
+			if (this.Data == null || this.Data.Length == 0)
+			{
+				return [];
+			}
+
+			if (size <= 0 || overlap < 0 || overlap >= 1)
+			{
+				return [];
+			}
+
+			this.ChunkSize = size;
+			this.OverlapSize = (int) (size * overlap);
+			int step = size - this.OverlapSize;
+			int numChunks = (this.Data.Length - size) / step + 1;
+
+			List<float[]> chunks = new List<float[]>(numChunks);
+
+			for (int i = 0; i < numChunks; i++)
+			{
+				float[] chunk = new float[size];
+				int sourceOffset = i * step;
+				Array.Copy(this.Data, sourceOffset, chunk, 0, size);
+				chunks.Add(chunk);
+			}
+
+			return chunks;
+		}
+
+		public void AggregateChunks(List<float[]> chunks)
+		{
+			if (chunks == null || chunks.Count == 0)
+			{
+				return;
+			}
+
+			int size = this.ChunkSize;
+			int step = size - this.OverlapSize;
+			int outputLength = (chunks.Count - 1) * step + size;
+			this.Data = new float[outputLength];
+
+			// Initialize output with zeros
+			Array.Clear(this.Data, 0, outputLength);
+
+			// Standard Overlap-Add Algorithm
+			for (int i = 0; i < chunks.Count; i++)
+			{
+				int offset = i * step;
+				float[] chunk = chunks[i];
+
+				for (int j = 0; j < size; j++)
+				{
+					this.Data[offset + j] += chunk[j]; // Accumulate samples
+				}
+			}
 		}
 
 		public void Play(CancellationToken cancellationToken, Action? onPlaybackStopped = null)
@@ -631,7 +725,7 @@ namespace CUDATone
 		public void Reload()
 		{
 			// Null pointer
-			this.Pointer = 0;
+			this.Pointers = [];
 		
 			this.LoadAudioFile();
 		}

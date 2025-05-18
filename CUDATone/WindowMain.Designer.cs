@@ -38,6 +38,13 @@
 			this.label_meta = new Label();
 			this.button_export = new Button();
 			this.button_import = new Button();
+			this.comboBox_devices = new ComboBox();
+			this.progressBar_vram = new ProgressBar();
+			this.progressBar_loading = new ProgressBar();
+			this.comboBox_kernels = new ComboBox();
+			this.button1 = new Button();
+			this.button_info = new Button();
+			this.checkBox_silent = new CheckBox();
 			((System.ComponentModel.ISupportInitialize) this.pictureBox_wave).BeginInit();
 			((System.ComponentModel.ISupportInitialize) this.numericUpDown_zoom).BeginInit();
 			this.SuspendLayout();
@@ -131,11 +138,79 @@
 			this.button_import.UseVisualStyleBackColor = true;
 			this.button_import.Click += this.button_import_Click;
 			// 
+			// comboBox_devices
+			// 
+			this.comboBox_devices.FormattingEnabled = true;
+			this.comboBox_devices.Location = new Point(12, 12);
+			this.comboBox_devices.Name = "comboBox_devices";
+			this.comboBox_devices.Size = new Size(300, 23);
+			this.comboBox_devices.TabIndex = 10;
+			this.comboBox_devices.Text = "Select CUDA device to initialize ...";
+			// 
+			// progressBar_vram
+			// 
+			this.progressBar_vram.Location = new Point(12, 41);
+			this.progressBar_vram.Name = "progressBar_vram";
+			this.progressBar_vram.Size = new Size(300, 12);
+			this.progressBar_vram.TabIndex = 11;
+			// 
+			// progressBar_loading
+			// 
+			this.progressBar_loading.Location = new Point(12, 667);
+			this.progressBar_loading.Name = "progressBar_loading";
+			this.progressBar_loading.Size = new Size(300, 12);
+			this.progressBar_loading.TabIndex = 12;
+			// 
+			// comboBox_kernels
+			// 
+			this.comboBox_kernels.FormattingEnabled = true;
+			this.comboBox_kernels.Location = new Point(12, 59);
+			this.comboBox_kernels.Name = "comboBox_kernels";
+			this.comboBox_kernels.Size = new Size(234, 23);
+			this.comboBox_kernels.TabIndex = 13;
+			this.comboBox_kernels.Text = "Select kernel to load ...";
+			// 
+			// button1
+			// 
+			this.button1.Location = new Point(252, 59);
+			this.button1.Name = "button1";
+			this.button1.Size = new Size(60, 23);
+			this.button1.TabIndex = 14;
+			this.button1.Text = "button1";
+			this.button1.UseVisualStyleBackColor = true;
+			// 
+			// button_info
+			// 
+			this.button_info.Location = new Point(318, 12);
+			this.button_info.Name = "button_info";
+			this.button_info.Size = new Size(23, 23);
+			this.button_info.TabIndex = 15;
+			this.button_info.Text = "i";
+			this.button_info.UseVisualStyleBackColor = true;
+			this.button_info.Click += this.button_info_Click;
+			// 
+			// checkBox_silent
+			// 
+			this.checkBox_silent.AutoSize = true;
+			this.checkBox_silent.Location = new Point(12, 642);
+			this.checkBox_silent.Name = "checkBox_silent";
+			this.checkBox_silent.Size = new Size(80, 19);
+			this.checkBox_silent.TabIndex = 16;
+			this.checkBox_silent.Text = "Silent log?";
+			this.checkBox_silent.UseVisualStyleBackColor = true;
+			// 
 			// WindowMain
 			// 
 			this.AutoScaleDimensions = new SizeF(7F, 15F);
 			this.AutoScaleMode = AutoScaleMode.Font;
 			this.ClientSize = new Size(1784, 821);
+			this.Controls.Add(this.checkBox_silent);
+			this.Controls.Add(this.button_info);
+			this.Controls.Add(this.button1);
+			this.Controls.Add(this.comboBox_kernels);
+			this.Controls.Add(this.progressBar_loading);
+			this.Controls.Add(this.progressBar_vram);
+			this.Controls.Add(this.comboBox_devices);
 			this.Controls.Add(this.button_import);
 			this.Controls.Add(this.button_export);
 			this.Controls.Add(this.label_meta);
@@ -166,5 +241,12 @@
 		private Label label_meta;
 		private Button button_export;
 		private Button button_import;
+		private ComboBox comboBox_devices;
+		private ProgressBar progressBar_vram;
+		private ProgressBar progressBar_loading;
+		private ComboBox comboBox_kernels;
+		private Button button1;
+		private Button button_info;
+		private CheckBox checkBox_silent;
 	}
 }

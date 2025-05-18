@@ -16,4 +16,9 @@
     <PackageReference Include="NAudio" Version="2.2.1" />
   </ItemGroup>
 
+  <ItemGroup>
+    <Folder Include="Resources\Kernels\CU\" />
+    <Folder Include="Resources\Kernels\PTX\" />
+  </ItemGroup>
+
 </Project>

@@ -30,39 +30,30 @@ namespace CUDATone
 
 
 		// ----- ----- METHODS ----- ----- \\
-		public string Log(string message = "", string inner = "", int indent = 0)
+		// Log
+		public void Log(string message = "", string inner = "", int indent = 0)
 		{
-			string indentString = new string('~', indent);
-			string logMessage = $"[Mem] {indentString}{message} ({inner})";
-			this.LogList.Items.Add(logMessage);
-			this.LogList.TopIndex = this.LogList.Items.Count - 1;
-			return logMessage;
+			string msg = $"[Memory]: {new string(' ', indent * 2)}{message}{(string.IsNullOrEmpty(inner) ? "" : $" ({inner})")}";
+
+			if (this.LogList.InvokeRequired)
+			{
+				this.LogList.Invoke((MethodInvoker) (() => {
+					this.LogList.Items.Add(msg);
+					this.LogList.SelectedIndex = this.LogList.Items.Count - 1;
+				}));
+			}
+			else
+			{
+				this.LogList.Items.Add(msg);
+				this.LogList.SelectedIndex = this.LogList.Items.Count - 1;
+			}
 		}
 
 
-
-
+		/// Dispose & free
 		public void Dispose()
 		{
 			// Free buffers
-		}
-
-		public CudaBuffer? GetBuffer(IntPtr pointer)
-		{
-			// Find buffer obj by pointer
-			CudaBuffer? obj = this.Buffers.FirstOrDefault(x => x.Pointer == pointer);
-			if (obj == null)
-			{
-				// Log
-				this.Log($"Couldn't find", "<" + pointer + ">", 1);
-				
-				return null;
-			}
-
-			// Update progress bar
-			this.UpdateProgressBar();
-
-			return obj;
 		}
 
 		public long FreeBuffer(IntPtr pointer, bool readable = false)
@@ -90,6 +81,26 @@ namespace CUDATone
 			this.UpdateProgressBar();
 
 			return size;
+		}
+
+
+		/// Get buffer + info
+		public CudaBuffer? GetBuffer(IntPtr pointer)
+		{
+			// Find buffer obj by pointer
+			CudaBuffer? obj = this.Buffers.FirstOrDefault(x => x.Pointer == pointer);
+			if (obj == null)
+			{
+				// Log
+				this.Log($"Couldn't find", "<" + pointer + ">", 1);
+				
+				return null;
+			}
+
+			// Update progress bar
+			this.UpdateProgressBar();
+
+			return obj;
 		}
 
 		public Type GetBufferType(IntPtr pointer)
@@ -130,6 +141,8 @@ namespace CUDATone
 			return length;
 		}
 
+
+		// Push & pull
 		public IntPtr PushData<T>(IEnumerable<T> data, bool silent = false) where T : unmanaged
 		{
 			// Check data
@@ -155,7 +168,7 @@ namespace CUDATone
 			// Log
 			if (!silent)
 			{
-				this.Log($"Pushed {length / 1024} kB", "<" + pointer + ">", 1);
+				this.Log($"Pushed {length * Marshal.SizeOf<T>() / 1024} kB", "<" + pointer + ">", 1);
 			}
 
 			// Create obj
@@ -213,8 +226,61 @@ namespace CUDATone
 			return data;
 		}
 
+		public List<IntPtr> PushChunks<T>(List<T[]> data, bool silent = false) where T : unmanaged
+		{
+					// Check data
+			if (data == null || !data.Any())
+			{
+				if (!silent)
+				{
+					this.Log("No data to push", "", 1);
+				}
+				return [];
+			}
+
+			// Create list of pointers
+			List<IntPtr> pointers = new();
+			
+			// Push each chunk
+			foreach (T[] chunk in data)
+			{
+				IntPtr pointer = this.PushData(chunk, silent);
+				pointers.Add(pointer);
+			}
+
+			return pointers;
+		}
+
+		public List<T[]> PullChunks<T>(List<IntPtr> pointers, bool free = false, bool silent = false) where T : unmanaged
+		{
+			// Create list of chunks
+			List<T[]> chunks = new();
+			
+			// Pull each chunk
+			foreach (IntPtr pointer in pointers)
+			{
+				T[] chunk = this.PullData<T>(pointer, free, silent);
+				chunks.Add(chunk);
+			}
+
+			return chunks;
+		}
+
+
+		/// Allocate buffer
 		public IntPtr AllocateBuffer<T>(IntPtr length, bool silent = false) where T : unmanaged
 		{
+			// Check length
+			if (length < 1)
+			{
+				if (!silent)
+				{
+					this.Log("No length to allocate", "", 1);
+				}
+
+				return 0;
+			}
+
 			// Allocate buffer
 			CudaDeviceVariable<T> buffer = new(length);
 			
@@ -244,6 +310,8 @@ namespace CUDATone
 			return pointer;
 		}
 
+
+		// Get memory info
 		public long GetTotalMemoryUsage(bool actual = false, bool asMegabytes = false)
 		{
 			// Sum up all buffer sizes * sizeof(type)
@@ -279,6 +347,22 @@ namespace CUDATone
 			return totalSize;
 		}
 
+		public long GetFreeMemory(bool asMegabytes = false)
+		{
+			// Get free memory
+			long totalSize = this.Context.GetFreeDeviceMemorySize();
+			
+			// Convert to megabytes
+			if (asMegabytes)
+			{
+				totalSize /= 1024 * 1024;
+			}
+
+			return totalSize;
+		}
+
+
+		// UI
 		public void UpdateProgressBar()
 		{
 			// Get total memory usage
