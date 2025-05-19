@@ -44,7 +44,7 @@ namespace CUDATone
 		// ----- ----- METHODS ----- ----- \\
 		public void Log(string message = "", string inner = "", int indent = 0)
 		{
-			string msg = $"[Context]: {new string(' ', indent * 2)}{message}{(string.IsNullOrEmpty(inner) ? "" : $" ({inner})")}";
+			string msg = $"[Context]: {new string('~', indent)}{message}{(string.IsNullOrEmpty(inner) ? "" : $" ({inner})")}";
 
 			if (this.LogList.InvokeRequired)
 			{

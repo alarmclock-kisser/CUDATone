@@ -4,6 +4,7 @@ using ManagedCuda.BasicTypes;
 using ManagedCuda.NVRTC;
 using ManagedCuda.VectorTypes;
 using System.Diagnostics;
+using System.Runtime.CompilerServices;
 
 namespace CUDATone
 {
@@ -51,9 +52,10 @@ namespace CUDATone
 
 
 		// ----- ----- METHODS ----- ----- \\
+		// Log
 		public void Log(string message = "", string inner = "", int indent = 0)
 		{
-			string msg = $"[Kernel]: {new string(' ', indent * 2)}{message}{(string.IsNullOrEmpty(inner) ? "" : $" ({inner})")}";
+			string msg = $"[Kernel]: {new string('~', indent)}{message}{(string.IsNullOrEmpty(inner) ? "" : $" ({inner})")}";
 
 			if (this.LogList.InvokeRequired)
 			{
@@ -70,13 +72,16 @@ namespace CUDATone
 		}
 
 
-
+		// Dispose
 		public void Dispose()
 		{
 			// Dispose of kernels
 			this.UnloadKernel();
 		}
 
+
+
+		// I/O
 		public List<string> GetPtxFiles(string? path = null)
 		{
 			path ??= Path.Combine(this.KernelPath, "PTX");
@@ -99,22 +104,10 @@ namespace CUDATone
 			return files.ToList();
 		}
 
-		public void CompileAll(bool silent = false, bool logErrors = false)
-		{
-			List<string> sourceFiles = this.SourceFiles;
 
-			// Compile all source files
-			foreach (string sourceFile in sourceFiles)
-			{
-				string? ptx = this.CompileKernel(sourceFile, silent);
-				if (string.IsNullOrEmpty(ptx) && logErrors)
-				{
-					this.Log("Compilation failed: ", Path.GetFileNameWithoutExtension(sourceFile), 1);
-				}
-			}
-		}
 
-		public void FillKernelsCombo(int index = -1)
+		// UI
+		public void FillKernelsCombo(int select = -1)
 		{
 			this.KernelsCombo.Items.Clear();
 
@@ -128,12 +121,15 @@ namespace CUDATone
 			}
 
 			// Select first item
-			if (this.KernelsCombo.Items.Count > index)
+			if (this.KernelsCombo.Items.Count > select)
 			{
-				this.KernelsCombo.SelectedIndex = index;
+				this.KernelsCombo.SelectedIndex = select;
 			}
 		}
 
+
+
+		// (Un) Load kernel
 		public void SelectLatestKernel()
 		{
 			string[] files = this.CompiledFiles.ToArray();
@@ -219,6 +215,9 @@ namespace CUDATone
 			}
 		}
 
+
+
+		// Compile kernel
 		public string? CompileKernel(string filepath, bool silent = false)
 		{
 			if (this.Context == null)
@@ -480,9 +479,28 @@ namespace CUDATone
 			return name;
 		}
 
-		public IntPtr ExecuteKernel(IntPtr pointer, int width, int height, int channels, int bitdepth, object[] arguments, bool silent = false)
+		public void CompileAll(bool silent = false, bool logErrors = false)
 		{
-			// Check if kernel is loaded
+			List<string> sourceFiles = this.SourceFiles;
+
+			// Compile all source files
+			foreach (string sourceFile in sourceFiles)
+			{
+				string? ptx = this.CompileKernel(sourceFile, silent);
+				if (string.IsNullOrEmpty(ptx) && logErrors)
+				{
+					this.Log("Compilation failed: ", Path.GetFileNameWithoutExtension(sourceFile), 1);
+				}
+			}
+		}
+
+
+
+
+		// Execute kernel (audio)
+		public IntPtr ExecuteKernelAudio(IntPtr pointer, IntPtr inputLength, object[] arguments, IntPtr expectedResultLength = 0, Type? expectedResultType = null, int channels = 2, int bitdepth = 32, bool silent = false)
+		{
+			// 1. Kernel-Check
 			if (this.Kernel == null)
 			{
 				if (!silent)
@@ -493,42 +511,41 @@ namespace CUDATone
 				return pointer;
 			}
 
-			// Get arguments
+			// 2. Argumente prüfen
 			Dictionary<string, Type> args = this.GetArguments(null, silent);
 
-			// Get pointer
+			// 3. Puffer-Infos holen
 			CUdeviceptr devicePtr = new(pointer);
-
-			IntPtr outputPointer = 0;
-
-			// Allocate output buffer if args has 2 IntPtr (input & output)
-			if (args.Count(x => x.Value == typeof(IntPtr)) == 2)
+			expectedResultType ??= this.MemoryH.GetBufferType(pointer);
+			if (expectedResultLength < 1)
 			{
-				CUdeviceptr oPtr = new(this.MemoryH.AllocateBuffer<byte>(width * height * ((channels * bitdepth) / 8), silent));
-				outputPointer = oPtr.Pointer;
+				expectedResultLength = this.MemoryH.GetBufferSize(pointer, true);
 			}
 
-			// Merge arguments with invariables
+			// 4. Ausgabe-Puffer allokieren (falls nötig)
+			IntPtr outputPointer = 0;
+			if (args.Count(x => x.Value == typeof(IntPtr)) == 2)
+			{
+				// Generische Allokation basierend auf expectedResultType
+				dynamic buffer = this.MemoryH.AllocateBuffer(expectedResultType, expectedResultLength, silent);
+				outputPointer = ((CUdeviceptr) buffer).Pointer;
+			}
+
+			// 5. Kernel-Argumente mergen
 			CUdeviceptr outputPtr = new(outputPointer);
-			object[] kernelArgs = this.MergeArguments(devicePtr, outputPtr, width, height, channels, bitdepth, arguments, silent);
+			object[] kernelArgs = this.MergeArguments(devicePtr, inputLength, outputPtr,
+													expectedResultLength, channels, bitdepth,
+													arguments, silent);
 
-			// Für ein 4-Kanal-Bild (RGBA): pixelIndex = (y * width + x) * 4;
-			int totalThreadsX = width;
-			int totalThreadsY = height;
+			// 6. 1D-Dimensionen für Audio-Daten
+			long totalSamples = (long) inputLength / (bitdepth / 8); // Anzahl der Float-Samples
+			int blockSize = 256; // Typische Blockgröße für 1D-Kernel
+			int gridSize = (int) ((totalSamples + blockSize - 1) / blockSize);
 
-			// Blockgröße (z. B. 16×16 Threads pro Block)
-			int blockSizeX = 8;
-			int blockSizeY = 8;
+			this.Kernel.BlockDimensions = new dim3(blockSize, 1, 1);  // 1D-Block
+			this.Kernel.GridDimensions = new dim3(gridSize, 1, 1);    // 1D-Grid
 
-			// Gridgröße = Gesamtgröße / Blockgröße (aufrunden)
-			int gridSizeX = (totalThreadsX + blockSizeX - 1) / blockSizeX;
-			int gridSizeY = (totalThreadsY + blockSizeY - 1) / blockSizeY;
-
-			this.Kernel.BlockDimensions = new dim3(blockSizeX, blockSizeY, 1);  // 2D-Block
-			this.Kernel.GridDimensions = new dim3(gridSizeX, gridSizeY, 1);     // 2D-Grid
-
-
-			// Run with arguments
+			// 7. Kernel ausführen
 			this.Kernel.Run(kernelArgs);
 
 			if (!silent)
@@ -536,19 +553,262 @@ namespace CUDATone
 				this.Log("Kernel executed", this.KernelName ?? "N/A", 1);
 			}
 
-			// Free input buffer if outputPointer != 0
+			// 8. Eingabe-Puffer freigeben (falls Ausgabe-Puffer existiert)
 			if (outputPointer != 0)
 			{
 				this.MemoryH.FreeBuffer(devicePtr.Pointer);
 			}
 
-			// Synchronize
+			// 9. Synchronisieren
 			this.Context.Synchronize();
 
-			// Return pointer
 			return outputPointer != 0 ? outputPointer : pointer;
 		}
 
+		public async Task<IntPtr[]> ExecuteKernelAudioBatchParallelAsync(IntPtr[] pointers, IntPtr inputLength, object[] arguments, IntPtr expectedResultLength = 0, Type? expectedResultType = null, int channels = 2, int bitdepth = 32, ProgressBar? pBar = null, bool silent = false)
+		{
+			// 1. Kernel-Check
+			if (this.Kernel == null)
+			{
+				if (!silent)
+				{
+					this.Log("Kernel not loaded", this.KernelName ?? "N/A", 1);
+				}
+
+				return pointers;
+			}
+
+			// 2. Validate inputs
+			if (pointers == null || pointers.Length == 0)
+			{
+				return [];
+			}
+
+			// 3. Get common parameters
+			Dictionary<string, Type> args = this.GetArguments(null, silent);
+			expectedResultType ??= this.MemoryH.GetBufferType(pointers[0]);
+			if (expectedResultLength < 1)
+			{
+				expectedResultLength = this.MemoryH.GetBufferSize(pointers[0], true);
+			}
+
+			// 4. Determine if we need output buffers
+			bool needsOutput = args.Count(x => x.Value == typeof(IntPtr)) == 2;
+			nint[] results = new IntPtr[pointers.Length];
+
+			// 5. Process chunks in parallel
+			int processed = 0;
+			object progressLock = new();
+
+			await Task.Run(() =>
+			{
+				Parallel.For(0, pointers.Length, i =>
+				{
+					try
+					{
+						// 5a. Allocate output if needed
+						IntPtr outputPtr = IntPtr.Zero;
+						if (needsOutput)
+						{
+							dynamic buffer = this.MemoryH.AllocateBuffer(expectedResultType, expectedResultLength, silent);
+							outputPtr = ((CUdeviceptr) buffer).Pointer;
+						}
+
+						// 5b. Prepare arguments
+						CUdeviceptr inputDevicePtr = new(pointers[i]);
+
+						// Automatische Längenbestimmung falls inputLength <= 0
+						IntPtr chunkLength = inputLength;
+						if (inputLength <= 0)
+						{
+							CudaBuffer? bufferInfo = this.MemoryH.GetBuffer(pointers[i]);
+							chunkLength = bufferInfo?.Length ?? 0;
+							if (chunkLength <= 0)
+							{
+								if (!silent)
+								{
+									this.Log($"Invalid buffer length for chunk {i}", "Using default length", 1);
+								}
+								chunkLength = expectedResultLength > 0 ? expectedResultLength : (IntPtr) 1024;
+							}
+						}
+
+						CUdeviceptr outputDevicePtr = new(outputPtr);
+						object[] kernelArgs = this.MergeArguments(inputDevicePtr, chunkLength, outputDevicePtr,
+																expectedResultLength, channels, bitdepth,
+																arguments, silent);
+
+						// 5c. Calculate dimensions
+						long totalSamples = (long) inputLength / (bitdepth / 8);
+						int blockSize = 256;
+						int gridSize = (int) ((totalSamples + blockSize - 1) / blockSize);
+
+						lock (this.Kernel) // Ensure thread-safe kernel configuration
+						{
+							this.Kernel.BlockDimensions = new dim3(blockSize, 1, 1);
+							this.Kernel.GridDimensions = new dim3(gridSize, 1, 1);
+							this.Kernel.Run(kernelArgs);
+						}
+
+						// 5d. Cleanup input if we created output
+						if (needsOutput)
+						{
+							this.MemoryH.FreeBuffer(pointers[i]);
+						}
+
+						results[i] = outputPtr != IntPtr.Zero ? outputPtr : pointers[i];
+
+						// 5e. Update progress
+						if (pBar != null)
+						{
+							lock (progressLock)
+							{
+								processed++;
+								pBar.Invoke((MethodInvoker) (() =>
+								{
+									pBar.Value = (int) ((float) processed / pointers.Length * 100);
+								}));
+							}
+						}
+					}
+					catch (Exception ex)
+					{
+						if (!silent)
+						{
+							this.Log($"Failed processing chunk {i}", ex.Message, 1);
+						}
+
+						results[i] = IntPtr.Zero;
+					}
+				});
+			});
+
+			// 6. Synchronize all operations
+			this.Context.Synchronize();
+
+			if (!silent)
+			{
+				this.Log($"Processed {pointers.Length} chunks", this.KernelName ?? "N/A", 1);
+			}
+
+			return results;
+		}
+
+		public async Task<IntPtr[]> ExecuteKernelAudioBatchAsync(IntPtr[] pointers, IntPtr inputLength, object[] arguments, IntPtr expectedResultLength = 0, Type? expectedResultType = null, int channels = 2, int bitdepth = 32, ProgressBar? pBar = null, bool silent = false)
+		{
+			// 1. Kernel-Check
+			if (this.Kernel == null)
+			{
+				if (!silent)
+				{
+					this.Log("Kernel not loaded", this.KernelName ?? "N/A", 1);
+				}
+
+				return pointers;
+			}
+
+			// 2. Validate inputs
+			if (pointers == null || pointers.Length == 0)
+			{
+				return [];
+			}
+
+			this.Context.SetCurrent();
+
+			// 3. Get common parameters
+			Dictionary<string, Type> args = this.GetArguments(null, silent);
+			expectedResultType ??= this.MemoryH.GetBufferType(pointers[0]);
+			if (expectedResultLength < 1)
+			{
+				expectedResultLength = this.MemoryH.GetBufferSize(pointers[0], true);
+			}
+
+			// 4. Determine if we need output buffers
+			bool needsOutput = args.Count(x => x.Value == typeof(IntPtr)) == 2;
+			nint[] results = new IntPtr[pointers.Length];
+			int processed = 0;
+
+			// 5. Process chunks sequentially
+			for (int i = 0; i < pointers.Length; i++)
+			{
+				try
+				{
+					// 5a. Buffer length determination
+					IntPtr chunkLength = inputLength;
+					if (inputLength <= 0)
+					{
+						CudaBuffer? bufferInfo = this.MemoryH.GetBuffer(pointers[i]);
+						chunkLength = bufferInfo?.Length ?? expectedResultLength;
+					}
+
+					// 5b. Allocate output if needed
+					IntPtr outputPtr = IntPtr.Zero;
+					if (needsOutput)
+					{
+						dynamic buffer = this.MemoryH.AllocateBuffer(expectedResultType, chunkLength, true);
+						outputPtr = ((CUdeviceptr) buffer).Pointer;
+					}
+
+					// 5c. Prepare and run kernel (synchron in async method)
+					CUdeviceptr inputDevicePtr = new(pointers[i]);
+					CUdeviceptr outputDevicePtr = new(outputPtr);
+					object[] kernelArgs = this.MergeArguments(inputDevicePtr, chunkLength, outputDevicePtr,
+														   chunkLength, channels, bitdepth,
+														   arguments, true);
+
+					long totalSamples = (long) chunkLength / (bitdepth / 8);
+					int blockSize = 256;
+					int gridSize = (int) ((totalSamples + blockSize - 1) / blockSize);
+
+					this.Kernel.BlockDimensions = new dim3(blockSize, 1, 1);
+					this.Kernel.GridDimensions = new dim3(gridSize, 1, 1);
+					this.Kernel.Run(kernelArgs);
+
+					// 5d. Cleanup
+					if (needsOutput)
+					{
+						this.MemoryH.FreeBuffer(pointers[i]);
+					}
+
+					results[i] = outputPtr != IntPtr.Zero ? outputPtr : pointers[i];
+				}
+				catch (Exception ex)
+				{
+					if (!silent)
+					{
+						this.Log($"Chunk {i} failed", ex.Message, 1);
+					}
+
+					results[i] = pointers[i];
+				}
+
+				// 5e. Progress update (UI-Thread)
+				if (pBar != null)
+				{
+					await Task.Run(() =>
+					{
+						pBar.Invoke((MethodInvoker) (() =>
+						{
+							pBar.Value = ++processed * 100 / pointers.Length;
+						}));
+					});
+				}
+
+				await Task.Yield(); // Unterbricht den Task kurz für UI-Updates
+			}
+
+			// 6. Final sync
+			this.Context.Synchronize();
+			if (!silent)
+			{
+				this.Log($"Processed {pointers.Length} chunks", this.KernelName ?? "N/A", 1);
+			}
+
+			return results;
+		}
+
+
+		// Get args & merge
 		public Type GetArgumentType(string typeName)
 		{
 			// Pointers are always IntPtr (containing *)
@@ -561,12 +821,15 @@ namespace CUDATone
 			Type type = typeIdentifier switch
 			{
 				"int" => typeof(int),
+				"long" => typeof(long),
 				"float" => typeof(float),
 				"double" => typeof(double),
-				"char" => typeof(char),
+				"char1" => typeof(char1),
 				"bool" => typeof(bool),
 				"void" => typeof(void),
-				"byte" => typeof(byte),
+				"char" => typeof(byte),
+				"byte" => typeof(sbyte),
+				"float2" => typeof(float2),
 				_ => typeof(void)
 			};
 
@@ -633,7 +896,7 @@ namespace CUDATone
 			return arguments;
 		}
 
-		public object[] MergeArguments(CUdeviceptr inputPointer, CUdeviceptr outputPointer, int width, int height, int channels, int bitdepth, object[] arguments, bool silent = false)
+		public object[] MergeArguments(CUdeviceptr inputPointer, long inputLength, CUdeviceptr outputPointer, long outputLength, int channels, int bitdepth, object[] arguments, bool silent = false)
 		{
 			// Get kernel argument definitions
 			Dictionary<string, Type> args = this.GetArguments(null, silent);
@@ -668,25 +931,25 @@ namespace CUDATone
 						this.Log($"Out-pointer: <{outputPointer}>", "", 1);
 					}
 				}
-				else if (name.Contains("width") && type == typeof(int))
+				else if (name.ToLower().Contains("length") && name.ToLower().Contains("in") && (type == typeof(int) || type == typeof(long)))
 				{
-					kernelArgs[i] = width;
+					kernelArgs[i] = inputLength;
 					
 					if (!silent)
 					{
-						this.Log($"Width: [{width}]", "", 1);
+						this.Log($"Input length: [{inputLength}]", "", 1);
 					}
 				}
-				else if (name.Contains("height") && type == typeof(int))
+				else if (name.ToLower().Contains("length") && name.ToLower().Contains("out") && (type == typeof(int) || type == typeof(long)))
 				{
-					kernelArgs[i] = height;
+					kernelArgs[i] = outputLength;
 
 					if (!silent)
 					{
-						this.Log($"Height: [{height}]", "", 1);
+						this.Log($"Output length: [{outputLength}]", "", 1);
 					}
 				}
-				else if (name.Contains("channel") && type == typeof(int))
+				else if (name.ToLower().Contains("channel") && type == typeof(int))
 				{
 					kernelArgs[i] = channels;
 
@@ -695,13 +958,13 @@ namespace CUDATone
 						this.Log($"Channels: [{channels}]", "", 1);
 					}
 				}
-				else if (name.Contains("bits") && type == typeof(int))
+				else if (name.ToLower().Contains("bit") && type == typeof(int))
 				{
 					kernelArgs[i] = bitdepth;
 
 					if (!silent)
 					{
-						this.Log($"Bits: [{bitdepth}]", "", 1);
+						this.Log($"Bitdepth: [{bitdepth}]", "", 1);
 					}
 				}
 				else
@@ -725,190 +988,13 @@ namespace CUDATone
 			}
 
 			// DEBUG LOG
-			//this.Log("Kernel arguments: " + string.Join(", ", kernelArgs.Select(x => x.ToString())), "", 1);
+			this.Log("Kernel arguments: " + string.Join(", ", kernelArgs.Select(x => x.ToString())), "", 1);
 
 			// Return kernel arguments
 			return kernelArgs;
 		}
 
 
-
-		public List<IntPtr> PerformAutoFractal(string kernelName = "mandelbrotFullAutoPrecise01", Size? size = null, int maxIterations = 1000, double initialZoom = 1, double incrementCoeff = 1.1, int iterCoeff = 10, Color? baseColor = null, bool silent = false)
-		{
-			// Verify size & color
-			size ??= new Size(1920, 1080);
-			baseColor ??= Color.Black;
-
-			// Get kernel
-			this.LoadKernel(kernelName, true);
-			if (this.Kernel == null)
-			{
-				if (!silent)
-				{
-					this.Log("Kernel not loaded", this.KernelName ?? "N/A", 1);
-				}
-				return [];
-			}
-
-			// Produce maxIterations IntPtr array
-			IntPtr[] iterations = new IntPtr[maxIterations];
-
-			// Fill iterations with IntPtr (output)
-			for (int i = 0; i < maxIterations; i++)
-			{
-				iterations[i] = this.MemoryH.AllocateBuffer<byte>(size.Value.Width * size.Value.Height * (32 / 8));
-			}
-
-			// Get kernel arguments
-			int width = size.Value.Width;
-			int height = size.Value.Height;
-			double zoom = initialZoom;
-			int colR = baseColor.Value.R;
-			int colG = baseColor.Value.G;
-			int colB = baseColor.Value.B;
-
-			// Für ein 4-Kanal-Bild (RGBA): pixelIndex = (y * width + x) * 4;
-			int totalThreadsX = width;
-			int totalThreadsY = height;
-
-			// Blockgröße (z. B. 16×16 Threads pro Block)
-			int blockSizeX = 8;
-			int blockSizeY = 8;
-
-			// Gridgröße = Gesamtgröße / Blockgröße (aufrunden)
-			int gridSizeX = (totalThreadsX + blockSizeX - 1) / blockSizeX;
-			int gridSizeY = (totalThreadsY + blockSizeY - 1) / blockSizeY;
-
-			this.Kernel.BlockDimensions = new dim3(blockSizeX, blockSizeY, 1);
-			this.Kernel.GridDimensions = new dim3(gridSizeX, gridSizeY, 1);
-
-			// Get input pointer
-			CUdeviceptr inputPointer = new(this.MemoryH.AllocateBuffer<byte>(size.Value.Width * size.Value.Height * (32 / 8)));
-
-			// Loop over iterations
-			int currentIter = iterCoeff;
-			for (int i = 0; i < maxIterations; i++)
-			{
-				var outputPointer = new CUdeviceptr(iterations[i]);
-				var arguments = this.MergeArguments(inputPointer, outputPointer, width, height, 4, 32, [inputPointer, outputPointer, width, height, zoom, currentIter, colR, colG, colB], silent);
-
-				// Run kernel
-				this.Kernel.Run(arguments);
-
-				// Synchronize
-				this.Context.Synchronize();
-
-				// Increase zoom & iter
-				zoom *= incrementCoeff;
-				currentIter += iterCoeff;
-			}
-
-			// Free input buffer
-			this.MemoryH.FreeBuffer(inputPointer.Pointer);
-
-			// Return iterations (output pointers)
-			return iterations.ToList();
-		}
-
-		public async Task<List<IntPtr>> PerformAutoFractalAsync(string kernelName = "mandelbrotFullAutoPrecise01", Size? size = null, int maxIterations = 1000, double initialZoom = 1, double incrementCoeff = 1.1,int iterCoeff = 10, Color? baseColor = null, ProgressBar? pBar = null, bool silent = false)
-		{
-			size ??= new Size(1920, 1080);
-			baseColor ??= Color.Black;
-
-			this.LoadKernel(kernelName, true);
-			if (this.Kernel == null)
-			{
-				if (!silent)
-				{
-					this.Log("Kernel not loaded", this.KernelName ?? "N/A", 1);
-				}
-				return [];
-			}
-
-			IntPtr[] iterations = new IntPtr[maxIterations];
-			for (int i = 0; i < maxIterations; i++)
-			{
-				iterations[i] = this.MemoryH.AllocateBuffer<byte>(size.Value.Width * size.Value.Height * 4);
-			}
-
-			int width = size.Value.Width;
-			int height = size.Value.Height;
-			double zoom = initialZoom;
-			int colR = baseColor.Value.R;
-			int colG = baseColor.Value.G;
-			int colB = baseColor.Value.B;
-
-			int totalThreadsX = width;
-			int totalThreadsY = height;
-			int blockSizeX = 8;
-			int blockSizeY = 8;
-			int gridSizeX = (totalThreadsX + blockSizeX - 1) / blockSizeX;
-			int gridSizeY = (totalThreadsY + blockSizeY - 1) / blockSizeY;
-
-			this.Kernel.BlockDimensions = new dim3(blockSizeX, blockSizeY, 1);
-			this.Kernel.GridDimensions = new dim3(gridSizeX, gridSizeY, 1);
-
-			CUdeviceptr inputPointer = new(this.MemoryH.AllocateBuffer<byte>(width * height * 4));
-			int currentIter = iterCoeff;
-
-			double averageMs = 0;
-			var sw = new System.Diagnostics.Stopwatch();
-
-			if (pBar != null)
-			{
-				pBar.Value = 0;
-				pBar.Maximum = 1;
-			}
-
-			for (int i = 0; i < maxIterations; i++)
-			{
-				await Task.Yield(); // async Übergangspunkt
-
-				sw.Restart();
-
-				var outputPointer = new CUdeviceptr(iterations[i]);
-				var arguments = this.MergeArguments(
-					inputPointer,
-					outputPointer,
-					width,
-					height,
-					4, 32,
-					[inputPointer, outputPointer, width, height, zoom, currentIter, colR, colG, colB],
-					silent
-				);
-
-				this.Kernel.Run(arguments);
-				this.Context.Synchronize();
-
-				sw.Stop();
-				double currentMs = sw.Elapsed.TotalMilliseconds;
-
-				// Update average (gleitender Durchschnitt)
-				averageMs = ((averageMs * i) + currentMs) / (i + 1);
-
-				// Update Zoom & Iteration
-				zoom *= incrementCoeff;
-				currentIter += iterCoeff;
-
-				// ProgressBar aktualisieren
-				if (pBar != null)
-				{
-					int estTotalMs = (int) (averageMs * maxIterations * 1.5);
-					int newMax = Math.Max(pBar.Maximum, estTotalMs);
-					if (pBar.Maximum != newMax)
-					{
-						pBar.Invoke(() => pBar.Maximum = newMax);
-					}
-
-					int progressValue = (int) (averageMs * (i + 1));
-					pBar.Invoke(() => pBar.Value = Math.Min(progressValue, pBar.Maximum));
-				}
-			}
-
-			this.MemoryH.FreeBuffer(inputPointer.Pointer);
-
-			return iterations.ToList();
-		}
 
 
 	}

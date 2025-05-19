@@ -40,6 +40,9 @@ namespace CUDATone
 			this.listBox_tracks.DoubleClick += (s, e) => this.MoveTrack(this.listBox_tracks.SelectedIndex);
 			this.RegisterNumericToSecondPow(this.numericUpDown_zoom);
 			this.RegisterNumericToSecondPow(this.numericUpDown_chunkSize);
+			this.comboBox_kernels.SelectedIndexChanged += (s, e) => this.LoadKernel(this.comboBox_kernels.SelectedItem?.ToString() ?? "");
+			this.checkBox_onlyOptionalArgs.CheckedChanged += (s, e) => this.GuiB.BuildPanel(0.6f, this.button_exec, this.checkBox_onlyOptionalArgs.Checked);
+
 
 			// Select first CUDA device
 			if (this.comboBox_devices.Items.Count > 0)
@@ -168,7 +171,7 @@ namespace CUDATone
 				// Get chunks from track
 				int chunkSize = (int) this.numericUpDown_chunkSize.Value;
 				float overlap = (float) this.numericUpDown_overlap.Value / 100f;
-				var chunks = track.GetChunks(chunkSize, overlap);
+				List<Single[]> chunks = track.GetChunks(chunkSize, overlap);
 				if (chunks == null || chunks.Count == 0)
 				{
 					if (!this.checkBox_silent.Checked)
@@ -336,6 +339,267 @@ namespace CUDATone
 			this.AH.UpdateView();
 		}
 
+		public void LoadKernel(string kernelName = "")
+		{
+			// Load kernel
+			this.CudaH.KernelH?.LoadKernel(kernelName, this.checkBox_silent.Checked);
+			if (this.CudaH.KernelH?.Kernel == null)
+			{
+				if (!this.checkBox_silent.Checked)
+				{
+					MessageBox.Show("Failed to load kernel", "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+				}
+				return;
+			}
+
+			// Get arguments
+			this.GuiB.BuildPanel(0.6f, this.button_exec, this.checkBox_onlyOptionalArgs.Checked);
+
+		}
+
+		public async void ExecKernelChunksOld(int index = -1)
+		{
+			// If index is -1: Get CurrentObject index
+			if (index == -1)
+			{
+				if (this.AH.CurrentObject == null)
+				{
+					return;
+				}
+
+				index = this.AH.Tracks.IndexOf(this.AH.CurrentObject);
+			}
+
+			// Check index range
+			if (index < 0 || index >= this.AH.Tracks.Count)
+			{
+				if (!this.checkBox_silent.Checked)
+				{
+					MessageBox.Show("Invalid track id", "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+				}
+				return;
+			}
+
+			// Check initialized
+			if (this.CudaH.MemoryH == null || this.CudaH.KernelH == null)
+			{
+				if (!this.checkBox_silent.Checked)
+				{
+					MessageBox.Show("CUDA not initialized", "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+				}
+				return;
+			}
+
+			// Get track
+			AudioObject track = this.AH.Tracks[index];
+			if (track == null)
+			{
+				if (!this.checkBox_silent.Checked)
+				{
+					MessageBox.Show("Couldn't get track", "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+				}
+				return;
+			}
+
+			// Verify track on device
+			bool moved = false;
+			if (!track.OnDevice)
+			{
+				this.MoveTrack(this.AH.Tracks.IndexOf(track));
+				moved = true;
+
+				// Abort if still not on device
+				if (!track.OnDevice)
+				{
+					if (!this.checkBox_silent.Checked)
+					{
+						MessageBox.Show("Couldn't move track to CUDA", "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+					}
+					return;
+				}
+			}
+
+			IntPtr[] pointers = track.Pointers;
+			Type type = this.CudaH.MemoryH.GetBufferType(pointers.FirstOrDefault());
+			if (type == typeof(void))
+			{
+				if (!this.checkBox_silent.Checked)
+				{
+					MessageBox.Show("Couldn't get buffer type", "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+				}
+				return;
+			}
+
+			// Get kernel arguments
+			object[] arguments = this.GuiB.GetArgumentValues();
+
+			// Execute kernel batch async
+			IntPtr[] result = await this.CudaH.KernelH.ExecuteKernelAudioBatchAsync(pointers, IntPtr.Zero, arguments, IntPtr.Zero, type, track.Channels, track.Bitdepth, this.progressBar_loading, this.checkBox_silent.Checked);
+			if (result == null || result.Length == 0)
+			{
+				if (!this.checkBox_silent.Checked)
+				{
+					MessageBox.Show("Failed to execute kernel", "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+				}
+				return;
+			}
+
+			// Set result to track
+			track.Pointers = result;
+
+			// Reset progress bar
+			this.progressBar_loading.Value = 0;
+
+			// Optionally move back to host
+			if (moved && track.OnDevice)
+			{
+				this.MoveTrack(this.AH.Tracks.IndexOf(track));
+			}
+
+			// Refresh UI
+			this.AH.UpdateView();
+		}
+
+		public async Task ExecKernelChunks(int index = -1)
+		{
+			try
+			{
+				// 1. Initiale Validierungen
+				if (index == -1)
+				{
+					if (this.AH.CurrentObject == null)
+					{
+						if (!this.checkBox_silent.Checked)
+						{
+							MessageBox.Show("No track selected", "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+						}
+
+						return;
+					}
+					index = this.AH.Tracks.IndexOf(this.AH.CurrentObject);
+				}
+
+				if (index < 0 || index >= this.AH.Tracks.Count)
+				{
+					if (!this.checkBox_silent.Checked)
+					{
+						MessageBox.Show("Invalid track index", "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+					}
+
+					return;
+				}
+
+				// 2. CUDA-Initialisierung prüfen
+				if (this.CudaH?.MemoryH == null || this.CudaH?.KernelH == null)
+				{
+					if (!this.checkBox_silent.Checked)
+					{
+						MessageBox.Show("CUDA not initialized", "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+					}
+
+					return;
+				}
+
+				// 3. Track validieren
+				AudioObject track = this.AH.Tracks[index];
+				if (track == null)
+				{
+					if (!this.checkBox_silent.Checked)
+					{
+						MessageBox.Show("Track not found", "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+					}
+
+					return;
+				}
+
+				// 4. Auf Device verschieben falls nötig
+				bool movedToDevice = false;
+				if (!track.OnDevice)
+				{
+					await Task.Run(() => this.MoveTrack(index));
+					if (!track.OnDevice)
+					{
+						if (!this.checkBox_silent.Checked)
+						{
+							MessageBox.Show("Failed to move track to device", "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+						}
+
+						return;
+					}
+					movedToDevice = true;
+				}
+
+				// 5. Pointer und Typ validieren
+				if (track.Pointers == null || track.Pointers.Length == 0)
+				{
+					if (!this.checkBox_silent.Checked)
+					{
+						MessageBox.Show("No device pointers available", "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+					}
+
+					return;
+				}
+
+				Type bufferType = this.CudaH.MemoryH.GetBufferType(track.Pointers[0]);
+				if (bufferType == typeof(void))
+				{
+					if (!this.checkBox_silent.Checked)
+					{
+						MessageBox.Show("Invalid buffer type", "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+					}
+
+					return;
+				}
+
+				// 6. Kernel ausführen
+				Object[] arguments = this.GuiB.GetArgumentValues();
+				this.progressBar_loading.Value = 0;
+
+				IntPtr[] results = await this.CudaH.KernelH.ExecuteKernelAudioBatchAsync(
+					track.Pointers,
+					IntPtr.Zero, // Automatische Längenbestimmung
+					arguments,
+					IntPtr.Zero, // Erwartete Länge
+					bufferType,
+					track.Channels,
+					track.Bitdepth,
+					this.progressBar_loading,
+					this.checkBox_silent.Checked);
+
+				if (results == null || results.Length == 0)
+				{
+					if (!this.checkBox_silent.Checked)
+					{
+						MessageBox.Show("Kernel execution failed", "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+					}
+
+					return;
+				}
+
+				// 7. Ergebnisse verarbeiten
+				track.Pointers = results;
+
+				// Optional: Zurück zum Host
+				if (movedToDevice && track.OnDevice)
+				{
+					await Task.Run(() => this.MoveTrack(index));
+				}
+
+				// UI aktualisieren
+				this.AH.UpdateView();
+			}
+			catch (Exception ex)
+			{
+				if (!this.checkBox_silent.Checked)
+				{
+					MessageBox.Show($"Error: {ex.Message}", "Critical Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+				}
+			}
+			finally
+			{
+				this.progressBar_loading.Value = 0;
+			}
+		}
 
 
 		// ----- ----- ----- EVENTS ----- ----- ----- \\
@@ -392,6 +656,11 @@ namespace CUDATone
 			this.AH.Normalize();
 
 			this.AH.UpdateView();
+		}
+
+		private async void button_exec_Click(object sender, EventArgs e)
+		{
+			await this.ExecKernelChunks();
 		}
 	}
 }

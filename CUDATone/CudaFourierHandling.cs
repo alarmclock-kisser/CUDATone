@@ -37,7 +37,7 @@ namespace CUDATone
 		// ----- ----- METHODS ----- ----- \\
 		public void Log(string message = "", string inner = "", int indent = 0)
 		{
-			string msg = $"[Fourier]: {new string(' ', indent * 2)}{message}{(string.IsNullOrEmpty(inner) ? "" : $" ({inner})")}";
+			string msg = $"[Fourier]: {new string('~', indent)}{message}{(string.IsNullOrEmpty(inner) ? "" : $" ({inner})")}";
 
 			if (this.LogList.InvokeRequired)
 			{
@@ -234,7 +234,7 @@ namespace CUDATone
 					return result.ToArray();
 				}
 
-				var plan = new CudaFFTPlan1D((int) length, cufftType.R2C, 1);
+				CudaFFTPlan1D plan = new CudaFFTPlan1D((int) length, cufftType.R2C, 1);
 
 				int total = pointers.Length;
 				int processed = 0;
@@ -246,7 +246,7 @@ namespace CUDATone
 
 				foreach (IntPtr pointer in pointers)
 				{
-					var obj = this.MemoryH.GetBuffer(pointer);
+					CudaBuffer? obj = this.MemoryH.GetBuffer(pointer);
 					if (obj == null || obj.Length == 0)
 					{
 						if (!silent)
@@ -258,7 +258,7 @@ namespace CUDATone
 					}
 
 					IntPtr complexPointer = this.MemoryH.AllocateBuffer<float2>(length, true);
-					var complexBuffer = this.MemoryH.GetBuffer(complexPointer);
+					CudaBuffer? complexBuffer = this.MemoryH.GetBuffer(complexPointer);
 					if (complexBuffer == null)
 					{
 						if (!silent)
@@ -271,8 +271,8 @@ namespace CUDATone
 
 					result.Add(complexPointer);
 
-					var devicePointer = new CUdeviceptr(pointer);
-					var complexDevicePointer = new CUdeviceptr(complexPointer);
+					CUdeviceptr devicePointer = new CUdeviceptr(pointer);
+					CUdeviceptr complexDevicePointer = new CUdeviceptr(complexPointer);
 
 					plan.Exec(devicePointer, complexDevicePointer);
 
@@ -327,7 +327,7 @@ namespace CUDATone
 					return result.ToArray();
 				}
 
-				var plan = new CudaFFTPlan1D((int) length, cufftType.C2R, 1);
+				CudaFFTPlan1D plan = new CudaFFTPlan1D((int) length, cufftType.C2R, 1);
 
 				int total = pointers.Length;
 				int processed = 0;
@@ -339,7 +339,7 @@ namespace CUDATone
 
 				foreach (IntPtr pointer in pointers)
 				{
-					var obj = this.MemoryH.GetBuffer(pointer);
+					CudaBuffer? obj = this.MemoryH.GetBuffer(pointer);
 					if (obj == null || obj.Length == 0)
 					{
 						if (!silent)
@@ -351,7 +351,7 @@ namespace CUDATone
 					}
 
 					IntPtr floatPointer = this.MemoryH.AllocateBuffer<float>(length, true);
-					var floatBuffer = this.MemoryH.GetBuffer(floatPointer);
+					CudaBuffer? floatBuffer = this.MemoryH.GetBuffer(floatPointer);
 					if (floatBuffer == null)
 					{
 						if (!silent)
@@ -364,8 +364,8 @@ namespace CUDATone
 
 					result.Add(floatPointer);
 
-					var devicePointer = new CUdeviceptr(pointer);
-					var floatDevicePointer = new CUdeviceptr(floatPointer);
+					CUdeviceptr devicePointer = new CUdeviceptr(pointer);
+					CUdeviceptr floatDevicePointer = new CUdeviceptr(floatPointer);
 
 					plan.Exec(devicePointer, floatDevicePointer);
 

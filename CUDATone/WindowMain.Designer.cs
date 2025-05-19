@@ -42,7 +42,7 @@
 			this.progressBar_vram = new ProgressBar();
 			this.progressBar_loading = new ProgressBar();
 			this.comboBox_kernels = new ComboBox();
-			this.button0 = new Button();
+			this.button_exec = new Button();
 			this.button_info = new Button();
 			this.checkBox_silent = new CheckBox();
 			this.numericUpDown_chunkSize = new NumericUpDown();
@@ -57,6 +57,7 @@
 			this.groupBox_controls = new GroupBox();
 			this.label_info_zoom = new Label();
 			this.panel_kernel = new Panel();
+			this.checkBox_onlyOptionalArgs = new CheckBox();
 			((System.ComponentModel.ISupportInitialize) this.pictureBox_wave).BeginInit();
 			((System.ComponentModel.ISupportInitialize) this.numericUpDown_zoom).BeginInit();
 			((System.ComponentModel.ISupportInitialize) this.numericUpDown_chunkSize).BeginInit();
@@ -186,14 +187,15 @@
 			this.comboBox_kernels.TabIndex = 13;
 			this.comboBox_kernels.Text = "Select kernel to load ...";
 			// 
-			// button0
+			// button_exec
 			// 
-			this.button0.Location = new Point(252, 59);
-			this.button0.Name = "button0";
-			this.button0.Size = new Size(60, 23);
-			this.button0.TabIndex = 14;
-			this.button0.Text = "button0";
-			this.button0.UseVisualStyleBackColor = true;
+			this.button_exec.Location = new Point(252, 59);
+			this.button_exec.Name = "button_exec";
+			this.button_exec.Size = new Size(60, 23);
+			this.button_exec.TabIndex = 14;
+			this.button_exec.Text = "Exec";
+			this.button_exec.UseVisualStyleBackColor = true;
+			this.button_exec.Click += this.button_exec_Click;
 			// 
 			// button_info
 			// 
@@ -336,18 +338,29 @@
 			this.panel_kernel.Size = new Size(234, 280);
 			this.panel_kernel.TabIndex = 27;
 			// 
+			// checkBox_onlyOptionalArgs
+			// 
+			this.checkBox_onlyOptionalArgs.AutoSize = true;
+			this.checkBox_onlyOptionalArgs.Location = new Point(12, 374);
+			this.checkBox_onlyOptionalArgs.Name = "checkBox_onlyOptionalArgs";
+			this.checkBox_onlyOptionalArgs.Size = new Size(190, 19);
+			this.checkBox_onlyOptionalArgs.TabIndex = 28;
+			this.checkBox_onlyOptionalArgs.Text = "Show only variable arguments?";
+			this.checkBox_onlyOptionalArgs.UseVisualStyleBackColor = true;
+			// 
 			// WindowMain
 			// 
 			this.AutoScaleDimensions = new SizeF(7F, 15F);
 			this.AutoScaleMode = AutoScaleMode.Font;
 			this.ClientSize = new Size(1784, 821);
+			this.Controls.Add(this.checkBox_onlyOptionalArgs);
 			this.Controls.Add(this.panel_kernel);
 			this.Controls.Add(this.groupBox_controls);
 			this.Controls.Add(this.groupBox_fft);
 			this.Controls.Add(this.vScrollBar_volume);
 			this.Controls.Add(this.checkBox_silent);
 			this.Controls.Add(this.button_info);
-			this.Controls.Add(this.button0);
+			this.Controls.Add(this.button_exec);
 			this.Controls.Add(this.comboBox_kernels);
 			this.Controls.Add(this.progressBar_loading);
 			this.Controls.Add(this.progressBar_vram);
@@ -387,7 +400,7 @@
 		private ProgressBar progressBar_vram;
 		private ProgressBar progressBar_loading;
 		private ComboBox comboBox_kernels;
-		private Button button0;
+		private Button button_exec;
 		private Button button_info;
 		private CheckBox checkBox_silent;
 		private NumericUpDown numericUpDown_chunkSize;
@@ -402,5 +415,6 @@
 		private GroupBox groupBox_controls;
 		private Label label_info_zoom;
 		private Panel panel_kernel;
+		private CheckBox checkBox_onlyOptionalArgs;
 	}
 }

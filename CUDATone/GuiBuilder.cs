@@ -41,7 +41,7 @@ namespace CUDATone
 		// ----- ----- METHODS ----- ----- \\
 		public void Log(string message = "", string inner = "", int indent = 0)
 		{
-			string msg = $"[GUI]: {new string(' ', indent * 2)}{message}{(string.IsNullOrEmpty(inner) ? "" : $" ({inner})")}";
+			string msg = $"[GUI]: {new string('~', indent)}{message}{(string.IsNullOrEmpty(inner) ? "" : $" ({inner})")}";
 
 			if (this.LogList.InvokeRequired)
 			{
@@ -59,7 +59,7 @@ namespace CUDATone
 
 
 
-		public void BuildPanel(float inputWidthPart = 0.55f, bool optionalArgsOnly = false)
+		public void BuildPanel(float inputWidthPart = 0.55f, Button? button_exec = null, bool optionalArgsOnly = false)
 		{
 			// Clear panel & get dimensions
 			this.ArgumentsPanel.Controls.Clear();
@@ -71,7 +71,7 @@ namespace CUDATone
 
 			// Get kernelArgs
 			Dictionary<string, Type> arguments = this.ContextH.KernelH?.GetArguments(null, this.SilenceCheck.Checked) ?? [];
-			var allArgNames = arguments.Keys.ToList();
+			List<String> allArgNames = arguments.Keys.ToList();
 
 			// First pass: Create all non-RGB controls
 			int y = 10;
@@ -79,18 +79,6 @@ namespace CUDATone
 			{
 				string argName = allArgNames[i];
 				Type argType = arguments[argName];
-
-				// Skip if this is part of an RGB triplet (we'll handle them together)
-				if (argName.EndsWith("R") && i + 2 < allArgNames.Count &&
-					allArgNames[i + 1] == argName.Substring(0, argName.Length - 1) + "G" &&
-					allArgNames[i + 2] == argName.Substring(0, argName.Length - 1) + "B")
-				{
-					continue;
-				}
-				if (argName.EndsWith("G") || argName.EndsWith("B"))
-				{
-					continue;
-				}
 
 				// Create numeric input
 				NumericUpDown numeric = new()
@@ -160,73 +148,23 @@ namespace CUDATone
 				y += 30;
 			}
 
-			// Second pass: Create color pickers for RGB triplets
-			for (int i = 0; i < allArgNames.Count - 2; i++)
-			{
-				string name1 = allArgNames[i];
-				string name2 = allArgNames[i + 1];
-				string name3 = allArgNames[i + 2];
-
-				if (name1.EndsWith("R") && name2.EndsWith("G") && name3.EndsWith("B") &&
-					name1.Substring(0, name1.Length - 1) == name2.Substring(0, name2.Length - 1) &&
-					name2.Substring(0, name2.Length - 1) == name3.Substring(0, name3.Length - 1))
-				{
-					string colorName = name1.Substring(0, name1.Length - 1);
-
-					// Create color picker button
-					Button colorButton = new()
-					{
-						Name = $"button_arg_{colorName}",
-						Text = $"{colorName} Color",
-						Location = new Point(maxWidth - inputWidth, y),
-						Size = new Size(inputWidth - 25, 23),
-						BackColor = Color.FromArgb(
-							(int) this.GetDefaultValue(name1, typeof(int)),
-							(int) this.GetDefaultValue(name2, typeof(int)),
-							(int) this.GetDefaultValue(name3, typeof(int))),
-						Tag = new string[] { name1, name2, name3 } // Store component names
-					};
-					this.UpdateButtonTextColor(colorButton);
-
-					colorButton.Click += (s, e) =>
-					{
-						ColorDialog cd = new() { Color = colorButton.BackColor };
-						if (cd.ShowDialog() == DialogResult.OK)
-						{
-							colorButton.BackColor = cd.Color;
-							this.UpdateButtonTextColor(colorButton);
-						}
-					};
-
-					// Create label
-					Label colorLabel = new()
-					{
-						Name = $"label_arg_{colorName}",
-						Text = colorName,
-						Location = new Point(10, y),
-						Size = new Size(maxWidth - 20 - inputWidth, 23)
-					};
-
-					this.ArgumentsPanel.Controls.Add(colorLabel);
-					this.ArgumentsPanel.Controls.Add(colorButton);
-					this.LabelList.Add(colorLabel);
-					y += 30;
-
-					// Skip next two elements (G and B)
-					i += 2;
-				}
-			}
-
 			// Add vertical scrollbar if needed
 			this.ArgumentsPanel.AutoScroll = y > maxHeight;
+
+			// Adjust button exec text (Exec IP | Exec OOP)
+			if (button_exec != null)
+			{
+				int ptrCount = arguments.Values.Where(t => t == typeof(IntPtr)).Count();
+				button_exec.Text = "Exec " + (ptrCount < 2 ? "IP" : "OOP");
+			}
 
 		}
 
 		public object[] GetArgumentValues()
 		{
-			var argsDefinitions = this.ContextH.KernelH?.GetArguments(null, this.SilenceCheck.Checked) ?? [];
+			Dictionary<String, Type> argsDefinitions = this.ContextH.KernelH?.GetArguments(null, this.SilenceCheck.Checked) ?? [];
 			object[] values = new object[argsDefinitions.Count];
-			var allArgNames = argsDefinitions.Keys.ToList();
+			List<String> allArgNames = argsDefinitions.Keys.ToList();
 
 			for (int i = 0; i < allArgNames.Count; i++)
 			{
@@ -240,7 +178,7 @@ namespace CUDATone
 					allArgNames[i + 1].Substring(0, allArgNames[i + 1].Length - 1))
 				{
 					string buttonName = $"button_arg_{argName.Substring(0, argName.Length - 1)}";
-					var button = this.ArgumentsPanel.Controls.OfType<Button>()
+					Button? button = this.ArgumentsPanel.Controls.OfType<Button>()
 								   .FirstOrDefault(b => b.Name == buttonName);
 
 					if (button != null)
@@ -255,7 +193,7 @@ namespace CUDATone
 				}
 
 				// Handle normal numeric inputs
-				var numeric = this.NumericsList.FirstOrDefault(n =>
+				NumericUpDown? numeric = this.NumericsList.FirstOrDefault(n =>
 					n.Name == $"input_arg_{argName}");
 
 				if (numeric != null)
@@ -324,7 +262,7 @@ namespace CUDATone
 
 		public string[] GetArgumentNames()
 		{
-			var argsDefinitions = this.ContextH.KernelH?.GetArguments(null, this.SilenceCheck.Checked) ?? [];
+			Dictionary<String, Type> argsDefinitions = this.ContextH.KernelH?.GetArguments(null, this.SilenceCheck.Checked) ?? [];
 			return argsDefinitions.Keys.ToArray();
 		}
 
@@ -350,7 +288,7 @@ namespace CUDATone
 				   type == typeof(ulong) ? ulong.MaxValue :
 				   type == typeof(float) ? decimal.MaxValue :
 				   type == typeof(double) ? decimal.MaxValue :
-				   type == typeof(decimal) ? decimal.MaxValue : 0;
+				   type == typeof(decimal) ? decimal.MaxValue : long.MaxValue;
 
 		private decimal GetDefaultValue(string argName, Type argType)
 		{
@@ -376,12 +314,9 @@ namespace CUDATone
 				   type == typeof(double) ? 0.0001m :
 				   type == typeof(decimal) ? 0.000001m : 1;
 
-		private bool IsSpecialParameter(string argName) => argName.Contains("width", StringComparison.OrdinalIgnoreCase) ||
-				   argName.Contains("height", StringComparison.OrdinalIgnoreCase) ||
+		private bool IsSpecialParameter(string argName) => argName.Contains("length", StringComparison.OrdinalIgnoreCase) ||
 				   argName.Contains("channel", StringComparison.OrdinalIgnoreCase) ||
 				   argName.Contains("bit", StringComparison.OrdinalIgnoreCase);
-
-		private void UpdateButtonTextColor(Button button) => button.ForeColor = button.BackColor.GetBrightness() < 0.5 ? Color.White : Color.Black;
 
 
 
@@ -545,7 +480,7 @@ namespace CUDATone
 				Brush brush = new SolidBrush(color.Value);
 
 				int y = 0;
-				foreach (var kv in values)
+				foreach (KeyValuePair<String, Object> kv in values)
 				{
 					string text = $"{kv.Key}: {kv.Value}";
 					g.DrawString(text, font, brush, 4, y);
@@ -602,7 +537,7 @@ namespace CUDATone
 				using Brush brush = new SolidBrush(color.Value);
 
 				int y = 4;
-				foreach (var kv in values)
+				foreach (KeyValuePair<String, Object> kv in values)
 				{
 					string text = $"{kv.Key}: {kv.Value}";
 					g.DrawString(text, font, brush, 4, y);

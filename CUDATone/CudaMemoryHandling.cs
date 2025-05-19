@@ -34,7 +34,7 @@ namespace CUDATone
 		// Log
 		public void Log(string message = "", string inner = "", int indent = 0)
 		{
-			string msg = $"[Memory]: {new string(' ', indent * 2)}{message}{(string.IsNullOrEmpty(inner) ? "" : $" ({inner})")}";
+			string msg = $"[Memory]: {new string('~', indent)}{message}{(string.IsNullOrEmpty(inner) ? "" : $" ({inner})")}";
 
 			if (this.LogList.InvokeRequired)
 			{
@@ -121,7 +121,7 @@ namespace CUDATone
 			return obj.Type;
 		}
 
-		public long GetBufferSize(IntPtr pointer, bool readable = false)
+		public IntPtr GetBufferSize(IntPtr pointer, bool readable = false)
 		{
 			// Get buffer
 			CudaBuffer? obj = this.GetBuffer(pointer);
@@ -134,7 +134,7 @@ namespace CUDATone
 			Type bufferType = obj.Type;
 
 			// Get length in bytes
-			long length = (long) obj.Length * Marshal.SizeOf(bufferType);
+			IntPtr length = obj.Length * Marshal.SizeOf(bufferType);
 
 			// Make readable
 			if (readable)
@@ -329,6 +329,62 @@ namespace CUDATone
 			if (!silent)
 			{
 				this.Log($"Allocated {length / 1024} kB", "<" + pointer + ">", 1);
+			}
+
+			// Add to dict
+			this.Buffers.Add(obj);
+
+			// Update PBar
+			this.UpdateProgressBar();
+
+			return pointer;
+		}
+
+		public IntPtr AllocateBuffer(Type bufferType, IntPtr length, bool silent = false)
+		{
+			// Check length
+			if (length < 1)
+			{
+				if (!silent)
+				{
+					this.Log("No length to allocate", "", 1);
+				}
+				return IntPtr.Zero;
+			}
+
+			// Validate type
+			if (!bufferType.IsValueType || bufferType.IsEnum || bufferType == typeof(void))
+			{
+				throw new ArgumentException("Type must be an unmanaged value type (e.g., float, int, byte)", nameof(bufferType));
+			}
+
+			this.Context.SetCurrent();
+
+			// Dynamische Allokation basierend auf dem Typ
+			dynamic? buffer = Activator.CreateInstance(
+				typeof(CudaDeviceVariable<>).MakeGenericType(bufferType),
+				length
+			);
+			if (buffer == null)
+			{
+				return IntPtr.Zero;
+			}
+
+			// Get pointer
+			IntPtr pointer = ((CUdeviceptr) buffer.DevicePointer).Pointer;
+
+			// Create obj
+			CudaBuffer obj = new()
+			{
+				Pointer = pointer,
+				Length = length,
+				Type = bufferType
+			};
+
+			// Log
+			if (!silent)
+			{
+				this.Log($"Allocated {length / 1024} kB of {bufferType.Name}", "<" + pointer + ">", 1);
 			}
 
 			// Add to dict

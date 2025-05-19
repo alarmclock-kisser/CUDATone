@@ -69,6 +69,7 @@ namespace CUDATone
 			this.OffsetScroll.Scroll += (s, e) => this.UpdateWaveform();
 			this.ZoomNumeric.ValueChanged += (s, e) => this.UpdateWaveform();
 			this.TrackList.SelectedIndexChanged += (s, e) => this.UpdateTrackInfo();
+			this.TrackList.SelectedIndexChanged += (s, e) => this.UpdateView();
 			this.ZoomNumeric.ValueChanged += (s, e) => this.ToggleZoom();
 			this.WavePBox.MouseWheel += (s, e) =>
 			{
@@ -137,7 +138,7 @@ namespace CUDATone
 		// ----- ----- ----- PUBLIC METHODS ----- ----- ----- \\
 		public void Log(string message = "", string inner = "", int indent = 0)
 		{
-			string msg = $"[Audio]: {new string(' ', indent * 2)}{message}{(string.IsNullOrEmpty(inner) ? "" : $" ({inner})")}";
+			string msg = $"[Audio]: {new string('~', indent)}{message}{(string.IsNullOrEmpty(inner) ? "" : $" ({inner})")}";
 
 			if (this.LogList.InvokeRequired)
 			{
@@ -672,7 +673,7 @@ namespace CUDATone
 
 				(i, state, local) =>
 				{
-					var (localData, localWeight) = local;
+					(Single[] localData, Single[] localWeight) = local;
 					float[] chunk = chunks[i];
 					int offset = i * step;
 
@@ -687,7 +688,7 @@ namespace CUDATone
 
 				local =>
 				{
-					var (localData, localWeight) = local;
+					(Single[] localData, Single[] localWeight) = local;
 					lock (output) // kurzes Lock für zusammenführung
 					{
 						for (int i = 0; i < outputLength; i++)
@@ -718,7 +719,7 @@ namespace CUDATone
 		{
 			if (this.Data == null || this.Data.Length == 0)
 			{
-				throw new InvalidOperationException("No audio data loaded");
+				return;
 			}
 
 			this.Player = new WaveOutEvent
